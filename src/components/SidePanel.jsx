@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import {
   Wheat, Play, Pause, Calendar, AlertTriangle, TrendingDown,
-  Layers, BarChart3, FileText, LogOut, Info, Database, ShieldAlert
+  Layers, BarChart3, FileText, LogOut, Info, Database, ShieldAlert,
+  ExternalLink
 } from 'lucide-react'
 import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart
@@ -9,6 +10,24 @@ import {
 import {
   LAYER_CONFIG,
 } from '../data/layerConfig'
+
+function GithubIcon({ size = 16, className = "" }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+    </svg>
+  )
+}
 
 // Largest-remainder method (Hare-Niemeyer) ensures integer percentages sum to exactly 100
 function largestRemainderRound(counts, totalTarget = 100) {
@@ -194,11 +213,25 @@ export default function SidePanel({
           <span>FasalScan</span>
         </div>
         <span className="panel-badge" title="Pre-fetched Sentinel-2 scenes, Jan–Mar 2025 archive">Demo: Rabi 2024–25</span>
+        <a
+          href="https://github.com/Umashankar12345/farmsync"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            background: 'none', border: 'none', color: 'var(--text-dim)',
+            cursor: 'pointer', padding: '4px', display: 'flex', textDecoration: 'none',
+            marginLeft: 'auto',
+          }}
+          title="View Source on GitHub"
+          aria-label="View Source on GitHub"
+        >
+          <GithubIcon size={16} />
+        </a>
         <button
           onClick={() => setShowAbout(true)}
           style={{
             background: 'none', border: 'none', color: 'var(--text-dim)',
-            cursor: 'pointer', padding: '4px', display: 'flex', marginLeft: 'auto',
+            cursor: 'pointer', padding: '4px', display: 'flex',
           }}
           title="About & Limitations"
           aria-label="About & Limitations"
@@ -700,10 +733,32 @@ export default function SidePanel({
               </tbody>
             </table>
 
+            <div style={{ marginTop: '1.2rem', paddingTop: '0.8rem', borderTop: '1px solid rgba(51, 65, 85, 0.4)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <a
+                href="https://github.com/Umashankar12345/farmsync"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  color: '#38bdf8',
+                  fontSize: '0.8rem',
+                  textDecoration: 'none',
+                  fontWeight: 600,
+                }}
+              >
+                <GithubIcon size={15} />
+                <span>github.com/Umashankar12345/farmsync</span>
+                <ExternalLink size={12} />
+              </a>
+              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Release: demo-credible</span>
+            </div>
+
             <button
               onClick={() => setShowAbout(false)}
               style={{
-                marginTop: '1.5rem', padding: '0.5rem 1.5rem',
+                marginTop: '1.2rem', padding: '0.5rem 1.5rem',
                 background: 'var(--emerald-500)', color: 'var(--bg-primary)',
                 border: 'none', borderRadius: '8px', fontWeight: 600,
                 cursor: 'pointer', fontSize: '0.85rem',
