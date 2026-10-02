@@ -346,7 +346,6 @@ export default function SidePanel({
               role="button"
               tabIndex={0}
               onKeyDown={(e) => e.key === 'Enter' && onZoneSelect(zone.id)}
-              style={zone.lowConfidence ? { opacity: 0.5 } : {}}
             >
               <span className={`risk-dot ${zone.severity}`} />
               <div className="risk-info">
@@ -354,8 +353,10 @@ export default function SidePanel({
                   {zone.name}
                   {zone.lowConfidence && (
                     <span style={{
-                      fontSize: '0.6rem', color: 'var(--amber-400)',
-                      marginLeft: '0.4rem', fontWeight: 500,
+                      fontSize: '0.58rem', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.18)',
+                      border: '1px solid rgba(245, 158, 11, 0.35)',
+                      padding: '1px 5px', borderRadius: '4px',
+                      marginLeft: '0.4rem', fontWeight: 600, letterSpacing: '0.03em',
                     }}>LOW CONF</span>
                   )}
                 </div>
@@ -382,10 +383,10 @@ export default function SidePanel({
         <div className="yield-widget">
           <div>
             <div className="yield-label">Projected peak-NDVI shortfall</div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '0.25rem', maxWidth: '190px' }}>
+            <div style={{ fontSize: '0.72rem', color: selectedZoneFeature ? '#93c5fd' : 'var(--text-dim)', marginTop: '0.25rem', fontWeight: selectedZoneFeature ? 600 : 400 }}>
               {selectedZoneFeature
-                ? `Basis: ${selectedZoneFeature.properties.name} shortfall`
-                : 'Basis: Farm-wide average (9 zones)'}
+                ? `Basis: ${selectedZoneFeature.properties.name} shortfall (NDVI Layer)`
+                : 'Basis: Farm-wide average (All 9 zones, NDVI Layer)'}
             </div>
           </div>
           <div className="yield-value">
