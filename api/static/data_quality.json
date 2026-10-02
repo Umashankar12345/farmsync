@@ -36,7 +36,7 @@
     "05.11",
     "05.11"
   ],
-  "offset_applied": false,
+  "offset_applied": true,
   "correction_method": "manual DN scale/offset",
   "baseline_offset_status": "Applied (baseline 05.11)",
   "bands_natively_20m": [

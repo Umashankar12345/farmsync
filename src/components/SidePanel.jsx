@@ -8,7 +8,35 @@ import {
 } from 'recharts'
 import {
   LAYER_CONFIG,
-} from '../data/mockData'
+} from '../data/layerConfig'
+
+// Largest-remainder method (Hare-Niemeyer) ensures integer percentages sum to exactly 100
+function largestRemainderRound(counts, totalTarget = 100) {
+  const keys = Object.keys(counts)
+  const totalCount = keys.reduce((acc, k) => acc + (counts[k] || 0), 0)
+  if (totalCount === 0) {
+    return keys.reduce((acc, k) => ({ ...acc, [k]: 0 }), {})
+  }
+
+  const items = keys.map(key => {
+    const rawVal = ((counts[key] || 0) / totalCount) * totalTarget
+    const floor = Math.floor(rawVal)
+    return { key, floor, remainder: rawVal - floor }
+  })
+
+  const diff = totalTarget - items.reduce((sum, item) => sum + item.floor, 0)
+  items.sort((a, b) => b.remainder - a.remainder)
+
+  for (let i = 0; i < diff; i++) {
+    items[i % items.length].floor += 1
+  }
+
+  const result = {}
+  items.forEach(item => {
+    result[item.key] = item.floor
+  })
+  return result
+}
 
 export default function SidePanel({
   dateIndex, setDateIndex,
@@ -17,24 +45,24 @@ export default function SidePanel({
   isPlaying, togglePlay,
   onLogout,
   dates,
+  fields = null,
   apiBase,
   apiError,
 }) {
   const [showAbout, setShowAbout] = useState(false)
+  const [reportNotice, setReportNotice] = useState(false)
 
-  // ── API data: fields + stats + data-quality ─────────────────────
-  const [apiFields, setApiFields] = useState(null)   // features array
+  // ── API data: stats + data-quality (fields passed from Dashboard) ──
+  const apiFields = fields?.features || null
   const [apiStats,  setApiStats]  = useState(null)
   const [apiDQ,     setApiDQ]     = useState(null)
 
   useEffect(() => {
     if (apiError) return
     Promise.all([
-      fetch(`${apiBase}/fields`).then(r => r.ok ? r.json() : null).catch(() => null),
       fetch(`${apiBase}/stats`).then(r  => r.ok ? r.json() : null).catch(() => null),
       fetch(`${apiBase}/data-quality`).then(r => r.ok ? r.json() : null).catch(() => null),
-    ]).then(([fields, stats, dq]) => {
-      if (fields) setApiFields(fields.features)
+    ]).then(([stats, dq]) => {
       if (stats)  setApiStats(stats)
       if (dq)     setApiDQ(dq)
     })
@@ -53,11 +81,11 @@ export default function SidePanel({
     const total = apiFields.length
     const tierCounts = { healthy: 0, medium: 0, high: 0 }
     apiFields.forEach(f => { tierCounts[f.properties.tier] = (tierCounts[f.properties.tier] || 0) + 1 })
-    composition = {
-      healthy:  Math.round(100 * (tierCounts.healthy || 0) / total),
-      stressed: Math.round(100 * (tierCounts.medium  || 0) / total),
-      critical: Math.round(100 * (tierCounts.high    || 0) / total),
-    }
+    composition = largestRemainderRound({
+      healthy:  tierCounts.healthy || 0,
+      stressed: tierCounts.medium  || 0,
+      critical: tierCounts.high    || 0,
+    })
     yieldRisk = apiStats?.farm_shortfall_pct ?? 'n/a'
 
     // Compute absolute farm mean NDVI for current date across valid pixels
@@ -106,9 +134,10 @@ export default function SidePanel({
     selectedZoneFeature = null
   }
 
-  // ── Data Quality ─────────────────────────────────────────────────
+  // ── Report Export Notice (Planned Feature) ────────────────────────
   const handleExport = () => {
-    alert('📄 Report generation would be triggered here.\nIn production, this generates a PDF with the map, risk rankings, and rule-based advisories.')
+    setReportNotice(true)
+    setTimeout(() => setReportNotice(false), 5000)
   }
 
   return (
@@ -441,6 +470,7 @@ export default function SidePanel({
               />
               <Area
                 type="linear"
+                connectNulls={false}
                 dataKey="ndvi"
                 stroke="#10b981"
                 strokeWidth={2}
@@ -493,10 +523,41 @@ export default function SidePanel({
 
       {/* Export Report */}
       <div className="panel-section">
-        <button className="btn-report" onClick={handleExport} id="export-btn">
+        <button
+          className="btn-report"
+          onClick={handleExport}
+          id="export-btn"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+        >
           <FileText size={16} />
-          Generate Report
+          <span>Generate Report</span>
+          <span style={{
+            fontSize: '0.62rem',
+            padding: '0.15rem 0.45rem',
+            borderRadius: '4px',
+            background: 'rgba(255,255,255,0.2)',
+            marginLeft: 'auto',
+            fontWeight: 700,
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+          }}>
+            Planned
+          </span>
         </button>
+        {reportNotice && (
+          <div style={{
+            marginTop: '0.5rem',
+            padding: '0.55rem 0.75rem',
+            borderRadius: '6px',
+            background: 'rgba(59, 130, 246, 0.15)',
+            border: '1px solid rgba(59, 130, 246, 0.3)',
+            color: '#93c5fd',
+            fontSize: '0.73rem',
+            lineHeight: 1.45,
+          }}>
+            ℹ️ <strong>Planned Feature:</strong> PDF export will generate field scouting sheets with NDVI maps, zonal risk rankings, and agronomist advisories.
+          </div>
+        )}
       </div>
 
       {/* About & Limitations Modal */}

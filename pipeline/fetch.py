@@ -36,7 +36,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pipeline.config import (
     BBOX, DATE_START, DATE_END, MAX_CLOUD_PCT,
     BANDS, RESOLUTION, TARGET_CRS,
-    DATA_RAW, STACK_NC,
+    DATA_RAW, STACK_NC, SCL_MASK_CLASSES,
 )
 
 
@@ -67,7 +67,7 @@ def _serialisable_dataset(ds, date_label, baselines):
 
 
 def _save_truecolor_preview(ds):
-    clear_mask = (ds["SCL"] != 0) & ~ds["SCL"].isin([3, 8, 9, 10, 11])
+    clear_mask = ~ds["SCL"].isin(SCL_MASK_CLASSES)
     clear_dates = clear_mask.any(dim=("y", "x")).values
     clear_index = int(np.flatnonzero(clear_dates)[0]) if np.any(clear_dates) else 0
     channels = []
@@ -85,7 +85,7 @@ def _save_truecolor_preview(ds):
 
 
 def _has_clear_pixels(ds):
-    clear_mask = (ds["SCL"] != 0) & ~ds["SCL"].isin([3, 8, 9, 10, 11])
+    clear_mask = ~ds["SCL"].isin(SCL_MASK_CLASSES)
     return bool(clear_mask.any().values)
 
 

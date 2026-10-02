@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useCallback, useState } from 'react'
 import { MapContainer, TileLayer, GeoJSON, ImageOverlay, useMap } from 'react-leaflet'
 
 // Initial view before the API supplies the pipeline bounds.
@@ -53,6 +53,7 @@ function FlyToZone({ selectedZone, geojsonData }) {
 export default function MapView({
   dateIndex, activeLayer, selectedZone, onZoneSelect,
   meta,          // from /api/meta — null until loaded
+  fields = null, // from /api/fields via Dashboard
   apiBase,       // Flask API root
   apiError,      // true when API unreachable
 }) {
@@ -76,29 +77,9 @@ export default function MapView({
     },
   }
 
-  // ── GeoJSON: API data only ────────────────────────────────────────
-  const [apiGeoJson, setApiGeoJson] = useState(null)
-  const [geoJsonSource, setGeoJsonSource] = useState('loading')
-
-  useEffect(() => {
-    if (apiError) {
-      setApiGeoJson(null)
-      setGeoJsonSource('unavailable')
-      return
-    }
-    fetch(`${apiBase}/fields`)
-      .then(r => { if (!r.ok) throw new Error(r.status); return r.json() })
-      .then(data => {
-        setApiGeoJson(data)
-        setGeoJsonSource('api')
-      })
-      .catch(() => {
-        setApiGeoJson(null)
-        setGeoJsonSource('unavailable')
-      })
-  }, [apiBase, apiError])
-
-  const geojsonData = apiGeoJson
+  // ── GeoJSON: API data from Dashboard ──────────────────────────────
+  const geojsonData = fields
+  const geoJsonSource = fields ? 'api' : (apiError ? 'unavailable' : 'loading')
 
   // Dates array from meta (for ImageOverlay URL)
   const dates = meta?.dates || []
@@ -114,23 +95,19 @@ export default function MapView({
     high:    '#fb7185',
   }
 
-  const getStyleForFeature = useMemo(() => {
-    return (feature) => {
-      const isSelected = feature.properties.id === selectedZone
-      let fillColor
+  const getStyleForFeature = useCallback((feature) => {
+    const isSelected = feature.properties.id === selectedZone
+    const tier = feature.properties.tier || 'healthy'
+    const fillColor = tierToColor[tier] ?? '#10b981'
 
-      const tier = feature.properties.tier || 'healthy'
-      fillColor = tierToColor[tier] ?? '#10b981'
-
-      return {
-        fillColor,
-        fillOpacity: isSelected ? 0.65 : 0.45,
-        weight: isSelected ? 3 : 1.5,
-        color: isSelected ? '#ffffff' : 'rgba(255,255,255,0.7)',
-        dashArray: '',
-      }
+    return {
+      fillColor,
+      fillOpacity: isSelected ? 0.65 : 0.45,
+      weight: isSelected ? 3 : 1.5,
+      color: isSelected ? '#ffffff' : 'rgba(255,255,255,0.7)',
+      dashArray: '',
     }
-  }, [dateIndex, selectedZone, geoJsonSource, apiGeoJson])
+  }, [selectedZone])
 
   const geoJsonKey = `${dateIndex}-${selectedZone}-${activeLayer}-${geoJsonSource}`
 
@@ -287,19 +264,6 @@ export default function MapView({
       {metaBounds && <FitBounds bounds={metaBounds} />}
 
       {geojsonData && <FlyToZone selectedZone={selectedZone} geojsonData={geojsonData} />}
-
-      {/* Source label (bottom-left, positioned above legend at 114px so it never overlaps "Low Vigor") */}
-      <div style={{
-        position: 'absolute', bottom: '114px', left: '16px', zIndex: 1000,
-        background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(8px)',
-        border: '1px solid rgba(51,65,85,0.45)',
-        borderRadius: '6px', padding: '3px 8px',
-        fontSize: '0.65rem', color: 'var(--text-dim)',
-        pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: '6px',
-      }}>
-        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
-        {geoJsonSource === 'api' ? 'Demo Archive: Sentinel-2 L2A (Rabi 2024–25)' : 'API data unavailable'}
-      </div>
     </MapContainer>
   )
 }

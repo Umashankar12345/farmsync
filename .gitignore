@@ -31,5 +31,7 @@ venv/
 .env
 
 # Large pipeline NetCDF data files (>100MB, exceeds GitHub file limit)
-data/
+/data/
 *.nc
+*.baseline.json
+

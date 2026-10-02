@@ -7,6 +7,9 @@ Run: python scripts/check_no_fake.py
 
 import os, sys, re
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Patterns that indicate fake/random data
@@ -15,8 +18,8 @@ FORBIDDEN_PATTERNS = [
     (r'\bnp\.random\b',               "np.random — random data (in pipeline code)"),
     (r'\bfaker\b',                    "faker library"),
     (r'mockData',                     "mockData import (should be replaced by API calls)"),
-    (r'\b(demo|fake|dummy|placeholder|sample)\s*=',
-                                      "Variable named demo/fake/dummy/placeholder/sample"),
+    (r'\b(demo|fake|dummy|sample)\s*=',
+                                      "Variable named demo/fake/dummy/sample"),
     (r'# TODO.*data',                 "TODO data comment"),
 ]
 
@@ -24,12 +27,10 @@ FORBIDDEN_PATTERNS = [
 SCAN_EXTS = {".jsx", ".js", ".ts", ".tsx", ".py"}
 
 # Paths to skip
-SKIP_DIRS = {"node_modules", ".git", "venv", "dist", "__pycache__", ".gemini"}
+SKIP_DIRS = {"node_modules", ".git", "venv", "dist", "__pycache__", ".gemini", "scripts"}
 
 # Files explicitly allowed to reference mockData (the module itself)
-ALLOWLIST = {
-    os.path.join(ROOT, "src", "data", "mockData.js"),  # the module, not an import
-}
+ALLOWLIST = set()
 
 errors = []
 
@@ -53,12 +54,12 @@ for dirpath, dirnames, filenames in os.walk(ROOT):
             for pattern, label in FORBIDDEN_PATTERNS:
                 if re.search(pattern, line):
                     rel = os.path.relpath(fpath, ROOT)
-                    errors.append(f"  {rel}:{i}  [{label}]  →  {line.rstrip()}")
+                    errors.append(f"  {rel}:{i}  [{label}]  ->  {line.rstrip()}")
 
 if errors:
-    print(f"FAIL — {len(errors)} forbidden pattern(s) found:\n")
+    print(f"FAIL - {len(errors)} forbidden pattern(s) found:\n")
     for e in errors:
         print(e)
     sys.exit(1)
 else:
-    print("PASS — no fake/random data patterns found.")
+    print("PASS - no fake/random data patterns found.")

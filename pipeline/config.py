@@ -47,15 +47,18 @@ S2_OFFSET = -0.1     # source: ESA L2A spec, baseline ≥04.00 only
 # ── Cloud masking ───────────────────────────────────────────────────
 # SCL classes to mask (treat as invalid):
 # 0=No data, 1=Saturated/Defective, 3=Cloud shadow,
-# 8=Cloud medium prob, 9=Cloud high prob, 10=Thin cirrus
-# Source: ESA SCL class definitions.
-SCL_MASK_CLASSES = [0, 1, 3, 8, 9, 10]
+# 8=Cloud medium prob, 9=Cloud high prob, 10=Thin cirrus, 11=Snow/Ice
+# Source: ESA SCL class definitions. Single source of truth across pipeline.
+SCL_MASK_CLASSES = [0, 1, 3, 8, 9, 10, 11]
 
 # ── NDVI / NDRE / NDMI formulas ─────────────────────────────────────
 # NDVI = (B08 - B04) / (B08 + B04)   Tucker 1979, RSE 8:127-150
 # NDRE = (B8A - B05) / (B8A + B05)   Barnes et al. 2000 (to verify)
 #        Note: B07/B05 is also used in the literature.
 # NDMI = (B8A - B11) / (B8A + B11)   Gao 1996, RSE 58:257-266
+#        Design choice: Uses narrow NIR B8A and SWIR-1 B11 because both are
+#        natively 20 m bands, resolution-matched before 10 m resampling (as in
+#        Sentinel Hub NDMI specification).
 #        Also called NDMI by Wilson & Sader 2002, RSE 80:385-396.
 #        NOT McFeeters (1996) open-water NDWI.
 # Small epsilon added to denominators to avoid divide-by-zero.

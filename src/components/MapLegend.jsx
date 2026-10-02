@@ -1,26 +1,32 @@
 export default function MapLegend({ layerConfig }) {
   return (
-    <div className="map-legend glass-panel">
-      <div className="legend-index">
-        <div className="legend-title">{layerConfig.name} Scale</div>
-        <div
-          className="legend-bar"
-          style={{ background: layerConfig.gradient }}
-        />
-        <div className="legend-labels">
-          <span>{layerConfig.legendMin}</span>
-          <span>{layerConfig.legendMax}</span>
-        </div>
+    <div className="map-legend-wrapper">
+      <div className="map-data-badge">
+        <span className="map-badge-dot" />
+        Demo Archive: Sentinel-2 L2A (Rabi 2024–25)
       </div>
-      <div style={{ width: '1px', height: '36px', background: 'rgba(51,65,85,0.4)', margin: '0 0.25rem' }} />
-      <div className="legend-zones" aria-label="Zone tier colors">
-        <div style={{ fontSize: '0.62rem', fontWeight: 600, color: 'var(--text-muted)', gridColumn: 'span 2', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          Relative Risk Tiers
+      <div className="map-legend glass-panel">
+        <div className="legend-index">
+          <div className="legend-title">{layerConfig.name} Scale</div>
+          <div
+            className="legend-bar"
+            style={{ background: layerConfig.gradient }}
+          />
+          <div className="legend-labels">
+            <span>{layerConfig.legendMin}</span>
+            <span>{layerConfig.legendMax}</span>
+          </div>
         </div>
-        <span><i className="legend-swatch healthy" /> Healthy</span>
-        <span><i className="legend-swatch medium" /> Medium risk</span>
-        <span><i className="legend-swatch high" /> High risk</span>
-        <span><i className="legend-swatch noncrop" /> Non-crop / bare</span>
+        <div style={{ width: '1px', height: '36px', background: 'rgba(51,65,85,0.4)', margin: '0 0.25rem' }} />
+        <div className="legend-zones" aria-label="Zone tier colors">
+          <div style={{ fontSize: '0.62rem', fontWeight: 600, color: 'var(--text-muted)', gridColumn: 'span 2', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Zone Risk Tiers
+          </div>
+          <span><i className="legend-swatch healthy" /> Low Risk (Healthy)</span>
+          <span><i className="legend-swatch medium" /> Medium Risk</span>
+          <span><i className="legend-swatch high" /> High Risk</span>
+          <span><i className="legend-swatch noncrop" /> Non-crop / bare</span>
+        </div>
       </div>
     </div>
   )

@@ -3,7 +3,7 @@ import { Bell, Settings, UserRound, Wheat, LogOut } from 'lucide-react'
 import MapView from '../components/MapView'
 import SidePanel from '../components/SidePanel'
 import MapLegend from '../components/MapLegend'
-import { LAYER_CONFIG } from '../data/mockData'
+import { LAYER_CONFIG } from '../data/layerConfig'
 
 const API = '/api'
 
@@ -11,7 +11,8 @@ const PIPELINE_COMMAND = 'python run_pipeline.py'
 
 export default function Dashboard({ onLogout }) {
   // ── API state ──────────────────────────────────────────────────────
-  const [meta, setMeta]       = useState(null)   // bounds + dates from /api/meta
+  const [meta, setMeta]         = useState(null)   // bounds + dates from /api/meta
+  const [fields, setFields]     = useState(null)   // GeoJSON from /api/fields
   const [apiState, setApiState] = useState('loading')
   const [missingFiles, setMissingFiles] = useState([])
   const [retryToken, setRetryToken] = useState(0)
@@ -24,10 +25,12 @@ export default function Dashboard({ onLogout }) {
   const [isPlaying, setIsPlaying] = useState(false)
   const playInterval = useRef(null)
 
-  // ── Fetch meta from API ───────────────────────────────────────────
+  // ── Fetch meta & fields from API ──────────────────────────────────
   useEffect(() => {
     setApiState('loading')
     setMissingFiles([])
+    setMeta(null)
+    setFields(null)
     fetch(`${API}/health`)
       .then(r => {
         if (!r.ok) throw new Error(`API returned ${r.status}: ${r.statusText}`)
@@ -42,18 +45,26 @@ export default function Dashboard({ onLogout }) {
           setApiState('missing')
           return null
         }
-        return fetch(`${API}/meta`).then(r => {
-          if (!r.ok) throw new Error(`API returned ${r.status}: ${r.statusText}`)
-          return r.json()
-        })
+        return Promise.all([
+          fetch(`${API}/meta`).then(r => {
+            if (!r.ok) throw new Error(`API returned ${r.status}: ${r.statusText}`)
+            return r.json()
+          }),
+          fetch(`${API}/fields`).then(r => {
+            if (!r.ok) throw new Error(`API returned ${r.status}: ${r.statusText}`)
+            return r.json()
+          }),
+        ])
       })
-      .then(data => {
-        if (!data) return
-        setMeta(data)
-        setDates(data.dates || [])
+      .then(results => {
+        if (!results) return
+        const [metaData, fieldsData] = results
+        setMeta(metaData)
+        setFields(fieldsData)
+        setDates(metaData.dates || [])
         // Default to last date (latest imagery)
-        if (data.dates && data.dates.length > 0) {
-          setDateIndex(data.dates.length - 1)
+        if (metaData.dates && metaData.dates.length > 0) {
+          setDateIndex(metaData.dates.length - 1)
         }
         setApiState('ready')
       })
@@ -130,6 +141,7 @@ export default function Dashboard({ onLogout }) {
           selectedZone={selectedZone}
           onZoneSelect={handleZoneSelect}
           meta={meta}
+          fields={fields}
           apiBase={API}
           apiError={!!apiError}
         />
@@ -168,6 +180,7 @@ export default function Dashboard({ onLogout }) {
           togglePlay={togglePlay}
           onLogout={onLogout}
           dates={dates}
+          fields={fields}
           apiBase={API}
           apiError={false}
         />

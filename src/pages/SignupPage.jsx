@@ -4,18 +4,23 @@ import { Wheat, ArrowRight, Eye, EyeOff } from 'lucide-react'
 
 export default function SignupPage({ onLogin }) {
   const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' })
+  const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const navigate = useNavigate()
 
-  const update = (field) => (e) => setForm({ ...form, [field]: e.target.value })
+  const update = (field) => (e) => {
+    setError('')
+    setForm({ ...form, [field]: e.target.value })
+  }
 
   const handleSubmit = (e) => {
     e.preventDefault()
     if (form.password !== form.confirm) {
-      alert('Passwords do not match')
+      setError('Passwords do not match')
       return
     }
+    setError('')
     setIsLoading(true)
     setTimeout(() => {
       onLogin()
@@ -60,6 +65,21 @@ export default function SignupPage({ onLogin }) {
           }}>
             ℹ️ <strong>Demo Mode:</strong> Mock registration enabled. Enter any details to create a session.
           </div>
+
+          {error && (
+            <div style={{
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              borderRadius: '8px',
+              padding: '7px 10px',
+              marginBottom: '1rem',
+              fontSize: '0.75rem',
+              color: '#f87171',
+              textAlign: 'center',
+            }}>
+              ⚠️ {error}
+            </div>
+          )}
 
           <div className="signup-grid">
             <div className="form-group">

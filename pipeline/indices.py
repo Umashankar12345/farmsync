@@ -59,14 +59,21 @@ def main():
         offset_applied = True
         correction_method = "odc-stac scale/offset"
         def to_refl(arr):
-            return arr  # already reflectance
+            data = arr.astype(float)
+            data = np.where(data == 0, np.nan, data)
+            return np.where(data < 0.0, 0.0, data)
     else:
         print(f"  Interpretation: values appear to be raw DN (~0–10000). "
               f"Applying scale={S2_SCALE}, offset={S2_OFFSET} manually.")
-        offset_applied = False
+        offset_applied = True
         correction_method = "manual DN scale/offset"
         def to_refl(arr):
-            return arr.astype(float) * S2_SCALE + S2_OFFSET
+            data = arr.astype(float)
+            # Set DN == 0 (nodata) to NaN before offset to avoid -0.1 being clipped to 0
+            data = np.where(data == 0, np.nan, data)
+            refl = data * S2_SCALE + S2_OFFSET
+            # Clip negative reflectance to 0.0, preserving all values >= 0 without upper clipping
+            return np.where(refl < 0.0, 0.0, refl)
 
     # Print one raw pixel and corrected value for provenance
     raw_px = float(ds["B08"].isel(time=0, y=50, x=50).values)
@@ -174,8 +181,10 @@ def main():
         "offset_applied":          offset_applied,
         "correction_method":        correction_method,
         "baseline_offset_status":  (
-            f"Applied (baseline {baselines[0]})" if not offset_applied and baselines
-            else "Applied by loader" if offset_applied else "Not required"
+            f"Applied (baseline {baselines[0]})" if correction_method == "manual DN scale/offset" and baselines
+            else "Applied by loader" if correction_method == "odc-stac scale/offset"
+            else "Applied" if offset_applied
+            else "Not required"
         ),
         "bands_natively_20m":      ["B05", "B8A", "B11", "SCL"],
         "resampled_to_m":          10,
