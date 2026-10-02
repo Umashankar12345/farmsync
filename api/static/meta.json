@@ -1,0 +1,32 @@
+{
+  "bounds": [
+    [
+      30.799434,
+      75.649292
+    ],
+    [
+      30.900582,
+      75.750731
+    ]
+  ],
+  "dates": [
+    "2025-01-26",
+    "2025-01-31",
+    "2025-02-05",
+    "2025-03-02",
+    "2025-03-07",
+    "2025-03-12",
+    "2025-03-17",
+    "2025-03-22",
+    "2025-03-27"
+  ],
+  "layers": [
+    "ndvi",
+    "ndre",
+    "ndmi",
+    "truecolor"
+  ],
+  "crs": "EPSG:4326",
+  "source": "pipeline/export.py \u2014 computed from real Sentinel-2 L2A scenes",
+  "note_basemap": "Use OpenStreetMap or CARTO dark tiles (no API key required). Set tile URL in MapView.jsx. CARTO: https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+}

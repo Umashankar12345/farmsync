@@ -1,0 +1,50 @@
+{
+  "scenes_found": 9,
+  "scenes_used": 9,
+  "dates": [
+    "2025-01-26",
+    "2025-01-31",
+    "2025-02-05",
+    "2025-03-02",
+    "2025-03-07",
+    "2025-03-12",
+    "2025-03-17",
+    "2025-03-22",
+    "2025-03-27"
+  ],
+  "per_date_cloud_masked_fraction": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0936,
+    0.5271,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "overall_cloud_masked_pct": 6.9,
+  "processing_baseline": "05.11",
+  "processing_baselines_all": [
+    "05.11",
+    "05.11",
+    "05.11",
+    "05.11",
+    "05.11",
+    "05.11",
+    "05.11",
+    "05.11",
+    "05.11"
+  ],
+  "offset_applied": false,
+  "correction_method": "manual DN scale/offset",
+  "baseline_offset_status": "Applied (baseline 05.11)",
+  "bands_natively_20m": [
+    "B05",
+    "B8A",
+    "B11",
+    "SCL"
+  ],
+  "resampled_to_m": 10,
+  "source_comment": "All values computed from real Sentinel-2 L2A scenes via pipeline/indices.py. No values are typed in or simulated."
+}

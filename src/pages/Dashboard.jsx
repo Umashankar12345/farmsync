@@ -1,15 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { Bell, Settings, UserRound, Wheat, LogOut } from 'lucide-react'
 import MapView from '../components/MapView'
 import SidePanel from '../components/SidePanel'
 import MapLegend from '../components/MapLegend'
 import { LAYER_CONFIG } from '../data/mockData'
 
-const API = 'http://localhost:5050'
+const API = '/api'
+
+const PIPELINE_COMMAND = 'python run_pipeline.py'
 
 export default function Dashboard({ onLogout }) {
   // ── API state ──────────────────────────────────────────────────────
   const [meta, setMeta]       = useState(null)   // bounds + dates from /api/meta
-  const [apiError, setApiError] = useState(null) // null = loading, string = error
+  const [apiState, setApiState] = useState('loading')
+  const [missingFiles, setMissingFiles] = useState([])
+  const [retryToken, setRetryToken] = useState(0)
 
   // ── Slider / layer state ──────────────────────────────────────────
   const [dates, setDates]         = useState([])
@@ -21,30 +26,42 @@ export default function Dashboard({ onLogout }) {
 
   // ── Fetch meta from API ───────────────────────────────────────────
   useEffect(() => {
-    fetch(`${API}/api/meta`)
+    setApiState('loading')
+    setMissingFiles([])
+    fetch(`${API}/health`)
       .then(r => {
         if (!r.ok) throw new Error(`API returned ${r.status}: ${r.statusText}`)
         return r.json()
       })
+      .then(files => {
+        const missing = Object.entries(files)
+          .filter(([, exists]) => !exists)
+          .map(([name]) => name)
+        if (missing.length > 0) {
+          setMissingFiles(missing)
+          setApiState('missing')
+          return null
+        }
+        return fetch(`${API}/meta`).then(r => {
+          if (!r.ok) throw new Error(`API returned ${r.status}: ${r.statusText}`)
+          return r.json()
+        })
+      })
       .then(data => {
+        if (!data) return
         setMeta(data)
         setDates(data.dates || [])
         // Default to last date (latest imagery)
         if (data.dates && data.dates.length > 0) {
           setDateIndex(data.dates.length - 1)
         }
-        setApiError(null)
+        setApiState('ready')
       })
       .catch(err => {
-        // API not reachable — fall back to mockData dates, show warning
-        setApiError(err.message)
-        // Import fallback dates from mockData so the slider still works
-        import('../data/mockData').then(m => {
-          setDates(m.DATES)
-          setDateIndex(m.DATES.length - 1)
-        })
+        console.error('API request failed:', err)
+        setApiState('network')
       })
-  }, [])
+  }, [retryToken])
 
   // ── Animate through dates ─────────────────────────────────────────
   const togglePlay = useCallback(() => {
@@ -74,30 +91,39 @@ export default function Dashboard({ onLogout }) {
   const handleZoneSelect = useCallback(zoneId => setSelectedZone(zoneId), [])
 
   const layerConfig = LAYER_CONFIG[activeLayer]
+  const apiError = apiState !== 'ready'
+  const errorMessage = apiState === 'network'
+    ? 'API server not running. Start it with: python api/app.py'
+    : apiState === 'missing'
+      ? `Missing pipeline files: ${missingFiles.join(', ') || 'none reported'}. Run the pipeline with: ${PIPELINE_COMMAND}`
+      : null
 
   return (
     <div className="dashboard">
-      {/* API Warning Banner */}
-      {apiError && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9998,
-          background: 'rgba(251,113,133,0.15)', backdropFilter: 'blur(8px)',
-          borderBottom: '1px solid rgba(251,113,133,0.3)',
-          padding: '0.5rem 1.5rem', display: 'flex', alignItems: 'center',
-          gap: '0.75rem', fontSize: '0.8rem', color: '#fb7185',
-        }}>
-          <span>⚠️</span>
-          <span>
-            <strong>API not reachable.</strong> Showing simulated data.
-            Run the pipeline then start: <code style={{ background: 'rgba(0,0,0,0.3)', padding: '0 4px', borderRadius: 4 }}>python api/app.py</code>
-          </span>
-          <span style={{ marginLeft: 'auto', color: 'var(--text-dim)', fontSize: '0.7rem' }}>
-            {apiError}
-          </span>
+      <header className="dashboard-topbar">
+        <div className="dashboard-brand">
+          <Wheat size={18} />
+          <span>FasalScan</span>
+          <span className="dashboard-brand-label">Dashboard</span>
+        </div>
+        <div className="dashboard-actions">
+          <button title="Notifications" aria-label="Notifications"><Bell size={16} /></button>
+          <span className="dashboard-user"><UserRound size={15} /> Farmer</span>
+          <button title="Settings" aria-label="Settings"><Settings size={16} /></button>
+        </div>
+      </header>
+      {apiState !== 'ready' && (
+        <div className={`status-banner ${apiState}`} role="status">
+          {apiState === 'loading' ? (
+            <><span className="spinner" aria-hidden="true" /> Loading data...</>
+          ) : (
+            <><span>{errorMessage}</span><button onClick={() => setRetryToken(value => value + 1)}>Retry</button></>
+          )}
         </div>
       )}
 
-      <div className="map-container" style={apiError ? { marginTop: '2rem' } : {}}>
+      <div className="dashboard-content">
+      <div className="map-container">
         <MapView
           dateIndex={dateIndex}
           activeLayer={activeLayer}
@@ -107,23 +133,46 @@ export default function Dashboard({ onLogout }) {
           apiBase={API}
           apiError={!!apiError}
         />
-        <MapLegend layerConfig={layerConfig} />
+        {apiState === 'ready' && <MapLegend layerConfig={layerConfig} />}
       </div>
 
-      <SidePanel
-        dateIndex={dateIndex}
-        setDateIndex={setDateIndex}
-        activeLayer={activeLayer}
-        setActiveLayer={setActiveLayer}
-        selectedZone={selectedZone}
-        onZoneSelect={handleZoneSelect}
-        isPlaying={isPlaying}
-        togglePlay={togglePlay}
-        onLogout={onLogout}
-        dates={dates}
-        apiBase={API}
-        apiError={!!apiError}
-      />
+      {apiError ? (
+        <aside className="side-panel">
+          <div className="panel-header">
+            <div className="panel-logo">
+              <Wheat size={22} strokeWidth={2.5} />
+              <span>FasalScan</span>
+            </div>
+            <button
+              onClick={onLogout}
+              style={{
+                background: 'none', border: 'none', color: 'var(--text-dim)',
+                cursor: 'pointer', padding: '4px', display: 'flex', marginLeft: 'auto',
+              }}
+              title="Logout"
+              aria-label="Logout"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+        </aside>
+      ) : (
+        <SidePanel
+          dateIndex={dateIndex}
+          setDateIndex={setDateIndex}
+          activeLayer={activeLayer}
+          setActiveLayer={setActiveLayer}
+          selectedZone={selectedZone}
+          onZoneSelect={handleZoneSelect}
+          isPlaying={isPlaying}
+          togglePlay={togglePlay}
+          onLogout={onLogout}
+          dates={dates}
+          apiBase={API}
+          apiError={false}
+        />
+      )}
+      </div>
     </div>
   )
 }

@@ -65,6 +65,20 @@ export default function LoginPage({ onLogin }) {
           </div>
           <p className="login-subtitle">Crop Stress Intelligence</p>
 
+          <div style={{
+            background: 'rgba(245, 158, 11, 0.12)',
+            border: '1px solid rgba(245, 158, 11, 0.35)',
+            borderRadius: '8px',
+            padding: '7px 10px',
+            marginBottom: '1rem',
+            fontSize: '0.72rem',
+            color: '#fbbf24',
+            lineHeight: 1.35,
+            textAlign: 'center',
+          }}>
+            ℹ️ <strong>Demo Mode:</strong> Mock authentication enabled. Enter any email &amp; password to sign in.
+          </div>
+
           <div className="form-group">
             <label htmlFor="login-email">Email</label>
             <input

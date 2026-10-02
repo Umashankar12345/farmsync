@@ -52,16 +52,19 @@ def main():
     print(f"  Median B08 (scene 0) = {median_val:.4f}")
 
     offset_applied = False
+    correction_method = "none"
     if median_val < 2.0:
         print("  Interpretation: values appear to be reflectance (0–1). "
               "odc-stac applied scale/offset automatically. NOT applying again.")
         offset_applied = True
+        correction_method = "odc-stac scale/offset"
         def to_refl(arr):
             return arr  # already reflectance
     else:
         print(f"  Interpretation: values appear to be raw DN (~0–10000). "
               f"Applying scale={S2_SCALE}, offset={S2_OFFSET} manually.")
         offset_applied = False
+        correction_method = "manual DN scale/offset"
         def to_refl(arr):
             return arr.astype(float) * S2_SCALE + S2_OFFSET
 
@@ -142,6 +145,7 @@ def main():
                                    attrs={"long_name": "1=valid pixel, 0=cloud/nodata"}),
     }, attrs={
         "offset_applied": str(offset_applied),
+        "correction_method": correction_method,
         "scl_mask_classes": str(SCL_MASK_CLASSES),
     })
 
@@ -168,6 +172,11 @@ def main():
         "processing_baseline":     baselines[0] if baselines else "unknown",
         "processing_baselines_all": baselines,
         "offset_applied":          offset_applied,
+        "correction_method":        correction_method,
+        "baseline_offset_status":  (
+            f"Applied (baseline {baselines[0]})" if not offset_applied and baselines
+            else "Applied by loader" if offset_applied else "Not required"
+        ),
         "bands_natively_20m":      ["B05", "B8A", "B11", "SCL"],
         "resampled_to_m":          10,
         "source_comment": (

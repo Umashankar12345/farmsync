@@ -87,22 +87,14 @@ def get_layer_image(date, layer):
 
 @app.route("/api/health")
 def health():
-    """Check which pipeline outputs exist."""
+    """Return the presence of required pipeline output files."""
     files = {
         "meta.json":         os.path.exists(META_JSON),
         "fields.geojson":    os.path.exists(FIELDS_GEOJSON),
         "stats.json":        os.path.exists(STATS_JSON),
         "data_quality.json": os.path.exists(DQ_JSON),
     }
-    all_ready = all(files.values())
-    return jsonify({
-        "status": "ready" if all_ready else "pipeline_output_missing",
-        "files":  files,
-        "message": (
-            "All pipeline outputs present." if all_ready else
-            "Run fetch.py → indices.py → yield_risk.py → export.py"
-        )
-    }), 200 if all_ready else 503
+    return jsonify(files)
 
 
 if __name__ == "__main__":

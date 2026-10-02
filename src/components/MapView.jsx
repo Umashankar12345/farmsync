@@ -1,28 +1,32 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { MapContainer, TileLayer, GeoJSON, ImageOverlay, useMap } from 'react-leaflet'
-import {
-  ZONES_GEOJSON,
-  getZoneColor,
-  getZoneOpacity,
-  getZoneData,
-} from '../data/mockData'
 
-const API_BASE = 'http://localhost:5050'
-
-// Ludhiana fallback centre — used when meta.json is not yet available
+// Initial view before the API supplies the pipeline bounds.
 const FALLBACK_CENTER  = [30.85, 75.70]
-const FALLBACK_BOUNDS  = [[30.80, 75.65], [30.90, 75.75]]
 
 // Layer name → API layer key (must match export.py output)
 const LAYER_API_KEY = {
-  NDVI: 'ndvi', NDRE: 'ndre', NDMI: 'ndmi', Stress: 'ndvi',
+  TrueColor: 'truecolor', NDVI: 'ndvi', NDRE: 'ndre', NDMI: 'ndmi', Stress: null,
 }
 
 // ── FitBounds: called once when meta arrives ───────────────────────────
 function FitBounds({ bounds }) {
   const map = useMap()
   useEffect(() => {
-    if (bounds) map.fitBounds(bounds, { animate: false, padding: [20, 20] })
+    if (!bounds) return undefined
+    map.invalidateSize({ pan: false })
+    const frame = requestAnimationFrame(() => {
+      map.invalidateSize({ pan: false })
+      map.fitBounds(bounds, { animate: false, padding: [4, 4], minZoom: 12 })
+    })
+    const retry = window.setTimeout(() => {
+      map.invalidateSize({ pan: false })
+      map.fitBounds(bounds, { animate: false, padding: [4, 4], minZoom: 12 })
+    }, 150)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.clearTimeout(retry)
+    }
   }, [bounds, map])
   return null
 }
@@ -52,26 +56,49 @@ export default function MapView({
   apiBase,       // Flask API root
   apiError,      // true when API unreachable
 }) {
-  // ── GeoJSON: use API data when available, fall back to mockData ────
+  const [baseLayer, setBaseLayer] = useState('satellite')
+
+  const baseLayers = {
+    street: {
+      label: 'Street',
+      url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    },
+    dark: {
+      label: 'Dark',
+      url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    },
+    satellite: {
+      label: 'Satellite',
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      attribution: 'Tiles &copy; <a href="https://www.esri.com/en-us/legal/terms/full-master-terms-of-use">Esri</a>',
+    },
+  }
+
+  // ── GeoJSON: API data only ────────────────────────────────────────
   const [apiGeoJson, setApiGeoJson] = useState(null)
   const [geoJsonSource, setGeoJsonSource] = useState('loading')
 
   useEffect(() => {
     if (apiError) {
-      setGeoJsonSource('mockdata')
+      setApiGeoJson(null)
+      setGeoJsonSource('unavailable')
       return
     }
-    fetch(`${apiBase}/api/fields`)
+    fetch(`${apiBase}/fields`)
       .then(r => { if (!r.ok) throw new Error(r.status); return r.json() })
       .then(data => {
         setApiGeoJson(data)
         setGeoJsonSource('api')
       })
-      .catch(() => setGeoJsonSource('mockdata'))
+      .catch(() => {
+        setApiGeoJson(null)
+        setGeoJsonSource('unavailable')
+      })
   }, [apiBase, apiError])
 
-  // Which GeoJSON to show
-  const geojsonData = apiGeoJson || ZONES_GEOJSON
+  const geojsonData = apiGeoJson
 
   // Dates array from meta (for ImageOverlay URL)
   const dates = meta?.dates || []
@@ -80,9 +107,7 @@ export default function MapView({
   // Leaflet bounds from meta.json ([[south,west],[north,east]])
   const metaBounds = meta?.bounds ?? null
 
-  // ── Style for zone polygons ────────────────────────────────────────
-  // Issue 4 fix: when data comes from API, use the tier field directly.
-  // When using mockData, use the computed severity.
+  // ── Style for API zone polygons ───────────────────────────────────
   const tierToColor = {
     healthy: '#10b981',
     medium:  '#fbbf24',
@@ -94,21 +119,15 @@ export default function MapView({
       const isSelected = feature.properties.id === selectedZone
       let fillColor
 
-      if (geoJsonSource === 'api') {
-        // Issue 4: colour from tier field (same field as risk list and composition)
-        const tier = feature.properties.tier || 'healthy'
-        fillColor = tierToColor[tier] ?? '#10b981'
-      } else {
-        // Fallback: NDVI-based colour from mockData
-        fillColor = getZoneColor(feature.properties.name, dateIndex)
-      }
+      const tier = feature.properties.tier || 'healthy'
+      fillColor = tierToColor[tier] ?? '#10b981'
 
       return {
         fillColor,
         fillOpacity: isSelected ? 0.65 : 0.45,
         weight: isSelected ? 3 : 1.5,
-        color: isSelected ? '#10b981' : 'rgba(255,255,255,0.4)',
-        dashArray: isSelected ? '' : '4',
+        color: isSelected ? '#ffffff' : 'rgba(255,255,255,0.7)',
+        dashArray: '',
       }
     }
   }, [dateIndex, selectedZone, geoJsonSource, apiGeoJson])
@@ -135,29 +154,16 @@ export default function MapView({
       advisoryText  = p.advisory_text ?? 'n/a'
       advisoryEvidence = p.advisory_evidence ?? ''
       lowConfidence = p.low_confidence ?? false
-    } else {
-      // mockData fallback
-      const zones   = getZoneData(dateIndex)
-      const zoneData = zones.find(z => z.id === zoneId)
-      if (!zoneData) return
-      severityClass = zoneData.severity
-      risk          = zoneData.risk
-      stressType    = zoneData.stressType
-      meanNdvi      = zoneData.meanNdvi.toFixed(2)
-      shortfallPct  = `${zoneData.shortfallPct}%`
-      advisoryText  = zoneData.advisoryText
-      advisoryEvidence = zoneData.advisoryEvidence
-      lowConfidence = zoneData.lowConfidence
-    }
+    } else return
 
     layer.on({
       click: () => onZoneSelect(zoneId),
       mouseover: e => {
-        e.target.setStyle({ weight: 3, color: '#10b981', fillOpacity: 0.65 })
+        e.target.setStyle({ weight: 3, color: '#ffffff', fillOpacity: 0.65 })
       },
       mouseout: e => {
         if (zoneId !== selectedZone) {
-          e.target.setStyle({ weight: 1.5, color: 'rgba(255,255,255,0.4)', fillOpacity: 0.45 })
+          e.target.setStyle({ weight: 1.5, color: 'rgba(255,255,255,0.7)', fillOpacity: 0.45 })
         }
       },
     })
@@ -192,7 +198,7 @@ export default function MapView({
           <div class="popup-stat">
             <div class="popup-stat-label">Source</div>
             <div class="popup-stat-value" style="font-size:0.7rem;color:var(--text-dim)">
-              ${geoJsonSource === 'api' ? 'pipeline/yield_risk.py' : 'Simulated (run pipeline)'}
+              pipeline/yield_risk.py
             </div>
           </div>
         </div>
@@ -209,39 +215,56 @@ export default function MapView({
         <div style="font-size:0.65rem;color:var(--text-dim);margin-top:0.5rem;font-style:italic">
           Rule-based advisory, not a diagnosis.
         </div>
+        <div style="font-size:0.65rem;color:var(--text-dim);margin-top:0.2rem;font-style:italic">
+          Note: 3×3 regional grid zone, not parcel boundary.
+        </div>
       `
       return div
     }, { maxWidth: 340 })
   }
 
   // ── ImageOverlay URL: /api/layer/{date}/{layer} ────────────────────
-  const layerKey = LAYER_API_KEY[activeLayer] ?? 'ndvi'
-  const overlayUrl = (currentDate && !apiError)
-    ? `${apiBase}/api/layer/${currentDate}/${layerKey}`
+  const layerKey = LAYER_API_KEY[activeLayer]
+  const overlayUrl = (currentDate && !apiError && layerKey)
+    ? `${apiBase}/layer/${currentDate}/${layerKey}`
     : null
 
   return (
     <MapContainer
       center={FALLBACK_CENTER}
       zoom={13}
+      zoomSnap={0.25}
+      zoomDelta={0.25}
+      className={`map-theme-${baseLayer}`}
       style={{ height: '100%', width: '100%' }}
       zoomControl={true}
       attributionControl={true}
     >
-      {/* Issue 6: CARTO dark tiles — no API key required.
-          If you see "API KEY REQUIRED" it is a network/firewall issue.
-          OpenStreetMap fallback below is always key-free. */}
       <TileLayer
-        attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-        errorTileUrl="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+        key={baseLayer}
+        attribution={baseLayers[baseLayer].attribution}
+        url={baseLayers[baseLayer].url}
       />
+
+      <div className="basemap-control" role="group" aria-label="Basemap">
+        {Object.entries(baseLayers).map(([key, layer]) => (
+          <button
+            key={key}
+            type="button"
+            className={baseLayer === key ? 'active' : ''}
+            onClick={() => setBaseLayer(key)}
+          >
+            {layer.label}
+          </button>
+        ))}
+      </div>
 
       {/* Issue 7: NDVI raster overlay from pipeline/export.py
           Shown UNDER the zone polygons using zIndex.
           Only visible when API is running and pipeline has been executed. */}
       {overlayUrl && metaBounds && (
         <ImageOverlay
+          key={`${currentDate}-${activeLayer}`}
           url={overlayUrl}
           bounds={metaBounds}
           opacity={0.55}
@@ -251,30 +274,31 @@ export default function MapView({
       )}
 
       {/* Zone polygons — sit above the raster overlay */}
-      <GeoJSON
-        key={geoJsonKey}
-        data={geojsonData}
-        style={getStyleForFeature}
-        onEachFeature={onEachFeature}
-      />
+      {geojsonData && (
+        <GeoJSON
+          key={geoJsonKey}
+          data={geojsonData}
+          style={getStyleForFeature}
+          onEachFeature={onEachFeature}
+        />
+      )}
 
       {/* Issue 1: fitBounds from meta.json when available */}
       {metaBounds && <FitBounds bounds={metaBounds} />}
 
-      <FlyToZone selectedZone={selectedZone} geojsonData={geojsonData} />
+      {geojsonData && <FlyToZone selectedZone={selectedZone} geojsonData={geojsonData} />}
 
-      {/* Source label (bottom-left, above attribution) */}
+      {/* Source label (bottom-left, positioned above legend at 114px so it never overlaps "Low Vigor") */}
       <div style={{
-        position: 'absolute', bottom: '28px', left: '10px', zIndex: 1000,
-        background: 'rgba(15,23,42,0.8)', backdropFilter: 'blur(8px)',
-        border: '1px solid rgba(51,65,85,0.4)',
+        position: 'absolute', bottom: '114px', left: '16px', zIndex: 1000,
+        background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(8px)',
+        border: '1px solid rgba(51,65,85,0.45)',
         borderRadius: '6px', padding: '3px 8px',
         fontSize: '0.65rem', color: 'var(--text-dim)',
-        pointerEvents: 'none',
+        pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: '6px',
       }}>
-        {geoJsonSource === 'api'
-          ? '✅ Real Sentinel-2 data'
-          : '⚠️ Simulated data — run pipeline'}
+        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
+        {geoJsonSource === 'api' ? 'Demo Archive: Sentinel-2 L2A (Rabi 2024–25)' : 'API data unavailable'}
       </div>
     </MapContainer>
   )

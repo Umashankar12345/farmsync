@@ -22,3 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Large pipeline NetCDF data files (>100MB, exceeds GitHub file limit)
+data/
+*.nc

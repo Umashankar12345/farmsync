@@ -34,38 +34,48 @@ None of these are "from the literature." They are design choices tuned for visua
 
 ## Limitations
 
-- **Risk is relative** to the top 10% of zones, so some zones always rank high — even when the entire farm is healthy.
-- **Management zones** are a 200 m grid, not real field boundaries.
-- **Optical indices cannot confirm disease.** "Non-water stress" means the cause is undetermined (nutrient, disease, or sowing date). The app does not detect disease.
-- **Yield-Risk Index is not a forecast.** It is a projected peak-NDVI shortfall and would need local crop-cutting data to calibrate.
+- **Relative ranking (tertiles)**: Risk is relative to the top 10% of zones, divided into 33% spatial tertiles for scouting priority. Thus, one-third of zones always rank as "High Risk" even when the entire farm is healthy. The UI provides an Absolute Canopy Reference (scene mean NDVI) to distinguish relative priority from actual crop failure.
+- **Management zones**: Zones are a 3×3 regional grid (~200 m to 1 km), not cadastral or parcel-level field boundaries. Sharp edge colour steps reflect zone aggregate tiers; underlying raster indices use continuous global colormap stretching (-0.1 to 0.9).
+- **Atmospheric anomalies (2025-01-31 fog/haze)**: The apparent dip to ~0.28 on 2025-01-31 was caused by widespread Punjab winter radiation fog / ground haze that ESA's SCL cloud mask failed to flag (reported 0% cloud). Rebounding to >0.65 by Feb 5 proves this was atmospheric, not crop loss.
+- **Yield-Risk Index is not a harvest forecast**: It is an uncalibrated indicator of projected peak-NDVI shortfall relative to the peak benchmark (0.71). The farm-wide average shortfall is 9.95%, while individual zone shortfalls range from 0.0% to 20.07% (e.g. Zone 4 is 18.67%). Real yield prediction requires local crop-cutting calibration data.
+- **Methodology & ML status**: All advisories and classifications are deterministic index-based formulas (NDVI, NDRE, NDMI) and rule-based agronomic logic. Optional ML/deep-learning segmentation (such as a U-Net) is future work when ground-truth parcel and scouting datasets become available. We do not claim unverified black-box AI.
+- **Optical indices cannot confirm disease**: "Non-water stress" means the cause is undetermined (nutrient deficiency, delayed sowing date, soil compaction, or disease). Scouts must verify in the field.
 - **Bands B05, B8A, B11, and SCL are natively 20 m**, resampled to 10 m.
-- **Late-sown fields** can rank as at-risk simply because they are behind in growth stage; the risk is relative, not a statement of failure.
-- **Login is mocked** — no real authentication. Any email/password is accepted.
-- **All advisories are rule-based**, not AI-generated.
+- **Demo window**: Pre-fetched historical archive for Rabi season 2024–25 (Jan–Mar 2025).
+- **Mock login**: Any email/password is accepted for frictionless evaluation.
 
 ## Pitch script (30 seconds)
 
-> "FasalScan monitors wheat stress near Ludhiana using free Sentinel-2 imagery. We compute NDVI, NDRE, and NDMI to rank management zones by relative risk — helping farmers decide where to scout first. Our Yield-Risk Index shows projected peak-NDVI shortfall so you can see which zones may underperform. All advisories are rule-based and transparent. We flag stress classes — water-related or undetermined — but we don't claim to diagnose disease from space."
+> "FasalScan monitors wheat crop stress near Ludhiana using Sentinel-2 satellite imagery from the Rabi 2024–25 season. We compute NDVI, NDRE, and NDMI to rank management zones into relative scouting tiers — showing agronomists and scouts exactly where to inspect first. We pair this relative priority with an absolute canopy reference and an uncalibrated Yield-Risk Index. All advisories are rule-based, transparent, and physically grounded: we distinguish water stress from other undetermined stresses, but never pretend to diagnose disease from space."
 
 ## Judge Q&A
 
 **"Is 82% a probability?"**
 No. It is a relative rank versus the best 10% of zones on that date. It always sums to more than 100%.
 
-**"Why 0.60 / 0.25 / 0.30 / 0.10?"**
-Design choices. Not from a paper. They were tuned for visual separation on this dataset.
+**"Why do 33% of zones always show as High Risk?"**
+Because the priority tiers are spatial tertiles (bottom 33%, middle 33%, top 33%) designed to allocate scouting labor efficiently. To evaluate absolute crop health, look at the Absolute Canopy Reference badge and mean NDVI.
 
-**"Is this AI?"**
-The advisory is rule-based. If a U-Net is added for zone segmentation, it would be trained on the rule-based labels — so it mostly regularises them into contiguous areas. There is no ground-truth validation.
+**"What happened on 2025-01-31 with the sharp dip to 0.28?"**
+That is a classic remote-sensing pitfall in the Indo-Gangetic plains: winter radiation fog and ground haze. The ESA SCL layer misclassified the scene as 0% cloud cover. The rapid rebound to >0.65 five days later confirms it was atmospheric attenuation rather than vegetative collapse.
+
+**"Why do Yield-Risk numbers differ between 9.95% and higher values?"**
+9.95% is the farm-wide average shortfall across all 9 zones. Individual management zones have their own specific shortfalls (e.g., Zone 4 has an 18.67% projected peak shortfall, Zone 8 has 0.0%). The card explicitly denotes which basis is currently shown.
+
+**"Are the zones field boundaries?"**
+No. They are 3×3 regional grid management units (~200 m to 1 km), not parcel-level cadastral plots. The sharp color boundaries represent zone-level summary scores. The underlying raster layer uses continuous global stretching.
+
+**"Is this AI / U-Net?"**
+No. We use transparent, physically interpretable index calculations and rule-based agronomic logic. Deep learning segmentation (such as a U-Net) is recognized as valuable future work once ground-truth field boundary and scouting data are acquired, rather than deploying an unvalidated black-box model.
 
 **"How do you know it's disease?"**
-We don't. We flag "non-water stress" which means the cause is undetermined. Scouts should verify in the field.
+We don't. We flag "non-water stress" which means the cause is undetermined (nutrient, disease, sowing date, or soil). Field scouts must verify the cause.
 
 **"Is it a yield forecast?"**
-No. It is a projected peak-NDVI shortfall index. Not validated against real yield data.
+No. It is a projected peak-NDVI shortfall index. Not validated against real crop-cutting harvest data.
 
 **"Why is late-sown wheat red?"**
-It is behind in growth stage, so its NDVI is lower than earlier-sown neighbours. The ranking is relative, not a statement of crop failure.
+It is behind in vegetative growth stage, so its NDVI is lower than earlier-sown neighbours. The ranking is relative to the benchmark on that date, not a verdict of crop mortality.
 
 ## References
 

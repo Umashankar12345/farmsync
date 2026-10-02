@@ -10,8 +10,9 @@ STOPS with a clear error message if the network or API is unavailable.
 Creates NO fake data.
 """
 
-import os, sys, json
+import os, sys, json, time
 import numpy as np
+from PIL import Image
 
 # ── Imports with clear error messages ────────────────────────────────
 try:
@@ -38,8 +39,64 @@ from pipeline.config import (
     DATA_RAW, STACK_NC,
 )
 
+
+def _serialisable_attrs(attrs):
+    safe_types = (str, int, float, bool, type(None))
+    return {
+        key: value if isinstance(value, safe_types) else str(value)
+        for key, value in attrs.items()
+    }
+
+
+def _serialisable_dataset(ds, date_label, baselines):
+    ds = ds.assign_attrs({
+        "source": "Planetary Computer, sentinel-2-l2a",
+        "bbox": str(BBOX),
+        "date_start": DATE_START,
+        "date_end": DATE_END,
+        "max_cloud": MAX_CLOUD_PCT,
+        "baselines": str(baselines),
+        "crs": "EPSG:32643",
+        "resolution_m": RESOLUTION,
+        "part_date": date_label,
+    })
+    ds.attrs = _serialisable_attrs(ds.attrs)
+    for name in ds.variables:
+        ds[name].attrs = _serialisable_attrs(ds[name].attrs)
+    return ds
+
+
+def _save_truecolor_preview(ds):
+    clear_mask = (ds["SCL"] != 0) & ~ds["SCL"].isin([3, 8, 9, 10, 11])
+    clear_dates = clear_mask.any(dim=("y", "x")).values
+    clear_index = int(np.flatnonzero(clear_dates)[0]) if np.any(clear_dates) else 0
+    channels = []
+    for band in ("B04", "B03", "B02"):
+        values = ds[band].isel(time=clear_index).astype("float32")
+        reflectance = np.clip((values - 1000) / 10000, 0, 1)
+        channels.append(np.asarray(reflectance.values))
+    rgb = np.stack(channels, axis=-1)
+    Image.fromarray((rgb * 255).astype(np.uint8), "RGB").save(
+        os.path.join(DATA_RAW, "preview_truecolor.png")
+    )
+    preview_date = str(ds.time.isel(time=clear_index).values)
+    print(f"  Preview date: {preview_date}")
+    print(f"  Saved: {os.path.join(DATA_RAW, 'preview_truecolor.png')}")
+
+
+def _has_clear_pixels(ds):
+    clear_mask = (ds["SCL"] != 0) & ~ds["SCL"].isin([3, 8, 9, 10, 11])
+    return bool(clear_mask.any().values)
+
+
 def main():
     os.makedirs(DATA_RAW, exist_ok=True)
+    parts_dir = os.path.join(DATA_RAW, "parts")
+    os.makedirs(parts_dir, exist_ok=True)
+
+    os.environ["GDAL_HTTP_MAX_RETRY"] = "5"
+    os.environ["GDAL_HTTP_RETRY_DELAY"] = "2"
+    os.environ["GDAL_HTTP_TIMEOUT"] = "60"
 
     print(f"\n── PHASE 1: Fetch ──────────────────────────────────────────────")
     print(f"  bbox       : {BBOX}  (W,S,E,N in EPSG:4326)")
@@ -91,70 +148,79 @@ def main():
         print(f"  {dt:<25} {str(cloud):>7}%  {base}")
 
     # ── 3. Load bands into xarray dataset ────────────────────────────
-    print(f"\n[3/4] Loading {len(items)} scenes with odc.stac …")
-    print( "  (This may take several minutes depending on connection speed.)")
+    print(f"\n[3/4] Loading {len(items)} scenes one date at a time …")
+    odc.stac.configure_rio(cloud_defaults=True)
+    item_by_date = {item.datetime.strftime("%Y-%m-%d"): item for item in items}
+    part_paths = []
+    first_clear_ds = None
+
+    for date, item in item_by_date.items():
+        part_path = os.path.join(parts_dir, f"{date}.nc")
+        part_paths.append(part_path)
+        if os.path.exists(part_path):
+            print(f"  {date}: exists, skipping")
+            continue
+
+        last_error = None
+        for attempt in range(1, 4):
+            started = time.perf_counter()
+            try:
+                date_ds = odc.stac.load(
+                    [item],
+                    bands=BANDS,
+                    bbox=BBOX,
+                    crs=TARGET_CRS,
+                    resolution=RESOLUTION,
+                    dtype="uint16",
+                    nodata=0,
+                    chunks={"x": 512, "y": 512, "time": 1},
+                ).compute(scheduler="threads", num_workers=4)
+                if first_clear_ds is None and _has_clear_pixels(date_ds):
+                    first_clear_ds = date_ds
+                date_ds = _serialisable_dataset(date_ds, date, baselines)
+                encoding = {
+                    name: {"zlib": True, "complevel": 4}
+                    for name in date_ds.data_vars
+                }
+                date_ds.to_netcdf(part_path, encoding=encoding)
+                elapsed = time.perf_counter() - started
+                print(f"  {date}: {os.path.getsize(part_path) / 1e6:.1f} MB in {elapsed:.1f}s")
+                break
+            except Exception as exc:
+                last_error = exc
+                if os.path.exists(part_path):
+                    os.remove(part_path)
+                print(f"  {date}: attempt {attempt}/3 failed: {exc}")
+                if attempt == 3:
+                    sys.exit(f"STOP: date {date} failed after 3 attempts.\n  {last_error}")
+
+    # ── 4. Merge parts and write a first-date true-color preview ─────
+    print("\n[4/4] Merging downloaded date files …")
+    datasets = [xr.open_dataset(path) for path in part_paths]
     try:
-        ds = odc.stac.load(
-            items,
-            bands=BANDS,
-            bbox=BBOX,
-            crs=TARGET_CRS,
-            resolution=RESOLUTION,
-            dtype="float32",   # triggers auto scale/offset via odc-stac
-            chunks={},         # load into memory (no dask needed for small bbox)
-        )
-    except Exception as e:
-        sys.exit(f"STOP: odc.stac.load failed.\n  {e}")
+        ds = xr.concat(datasets, dim="time")
+        ds = _serialisable_dataset(ds, "merged", baselines)
+        encoding = {
+            name: {"zlib": True, "complevel": 4}
+            for name in ds.data_vars
+        }
+        ds.to_netcdf(STACK_NC, encoding=encoding)
+    finally:
+        for dataset in datasets:
+            dataset.close()
 
-    print(f"\n  Dataset dimensions: {dict(ds.dims)}")
-    print(f"  CRS              : {TARGET_CRS}")
-    print(f"  Spatial shape    : {ds[BANDS[0]].shape}")
-
-    # ── 4. Verify one raw pixel value ────────────────────────────────
-    # odc-stac with dtype="float32" applies the STAC raster:bands
-    # scale/offset automatically, so values should already be reflectance.
-    # We report one pixel to confirm.
-    band_sample = "B08"
-    raw_val = float(ds[band_sample].isel(time=0, y=50, x=50).values)
-    print(f"\n  Sample pixel ({band_sample}, time=0, y=50, x=50): {raw_val:.6f}")
-    print(f"  Expected range after correction: 0 – 1  (typical crop NDVI ~0.3–0.9)")
-
-    # Check that most values are plausibly in 0-1 range
-    arr = ds[band_sample].isel(time=0).values
-    in_range = np.nanmean((arr >= 0) & (arr <= 1))
-    print(f"  Fraction of {band_sample} pixels in [0,1]: {in_range:.3f}")
-    if in_range < 0.80:
-        print(
-            f"  WARNING: Only {in_range:.1%} pixels in [0,1]. "
-            "Check whether odc-stac applied the scale/offset. "
-            "If raw DN (~0–10000), set dtype='uint16' and apply manually in indices.py."
-        )
-    else:
-        print(f"  OK: scale/offset appears applied by odc-stac.")
-
-    # ── 5. Save to NetCDF ─────────────────────────────────────────────
-    print(f"\n[4/4] Saving to {STACK_NC} …")
-    # Store processing baselines as a coordinate for provenance
-    ds = ds.assign_attrs({
-        "source":      "Planetary Computer, sentinel-2-l2a",
-        "bbox":        str(BBOX),
-        "date_start":  DATE_START,
-        "date_end":    DATE_END,
-        "max_cloud":   MAX_CLOUD_PCT,
-        "baselines":   str(baselines),
-        "crs":         TARGET_CRS,
-        "resolution_m": RESOLUTION,
-    })
-
-    # Drop object-dtype coords that NetCDF can't handle
-    coords_to_drop = [
-        c for c in ds.coords
-        if ds.coords[c].dtype == object
-    ]
-    if coords_to_drop:
-        ds = ds.drop_vars(coords_to_drop)
-
-    ds.to_netcdf(STACK_NC)
+    if first_clear_ds is None:
+        for part_path in part_paths:
+            candidate = xr.open_dataset(part_path).load()
+            if _has_clear_pixels(candidate):
+                first_clear_ds = candidate
+                break
+            candidate.close()
+    if first_clear_ds is None:
+        first_clear_ds = xr.open_dataset(part_paths[0]).load()
+    _save_truecolor_preview(first_clear_ds)
+    if first_clear_ds is not None:
+        first_clear_ds.close()
     size_mb = os.path.getsize(STACK_NC) / 1e6
     print(f"  Saved: {STACK_NC}  ({size_mb:.1f} MB)")
 

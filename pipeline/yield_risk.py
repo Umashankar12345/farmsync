@@ -56,7 +56,12 @@ def compute_zones(ndvi_stack, transform, src_crs_wkt):
             compactness=SLIC_COMPACTNESS,
             channel_axis=-1,
             start_label=0,
+            enforce_connectivity=True,
+            min_size_factor=0.1,
+            max_size_factor=10.0,
         )
+        if len(np.unique(segments)) < 3:
+            raise ValueError("SLIC produced fewer than 3 usable management zones")
         source = "SLIC on NDVI time-stack (design choice)"
         print(f"  SLIC succeeded: {len(np.unique(segments))} segments")
     except Exception as e:
@@ -73,6 +78,10 @@ def compute_zones(ndvi_stack, transform, src_crs_wkt):
         source = "Regular 10x10 grid fallback (SLIC failed)"
         print(f"  Using grid fallback: {len(np.unique(segments))} zones")
 
+    invalid_pixels = ~np.isfinite(ndvi_stack).any(axis=0)
+    segments = segments.astype(np.int32, copy=False)
+    segments[invalid_pixels] = -1
+
     return segments, source
 
 
@@ -85,6 +94,8 @@ def polygonize_zones(segments, raster_transform, src_crs_str):
     polys = []
     unique_labels = np.unique(segments)
     for lbl in unique_labels:
+        if lbl < 0:
+            continue
         mask = (segments == lbl).astype(np.uint8)
         shapes = list(rasterio.features.shapes(mask, transform=raster_transform))
         zone_shapes = [sg.shape(s) for s, v in shapes if v == 1]
@@ -167,11 +178,14 @@ def main():
     print("\n[2/6] Computing per-zone per-date NDVI/NDRE/NDMI …")
     zone_stats = {}   # label -> {ndvi: [T], ndmi: [T], ndre: [T], valid_frac: [T]}
     for lbl in zone_labels:
+        if lbl < 0:
+            continue
         mask2d = segments == lbl
         ndvi_series, ndmi_series, ndre_series, vf_series = [], [], [], []
         for t in range(T):
             valid_px = valid_stack[t] & mask2d
-            vf = float(np.mean(valid_px)) if np.any(mask2d) else 0.0
+            zone_pixels = mask2d.sum()
+            vf = float(valid_px.sum() / zone_pixels) if zone_pixels else 0.0
             ndvi_t = float(np.nanmean(ndvi_stack[t][valid_px])) if np.any(valid_px) else np.nan
             ndmi_t = float(np.nanmean(ndmi_stack[t][valid_px])) if np.any(valid_px) else np.nan
             ndre_t = float(np.nanmean(ndre_stack[t][valid_px])) if np.any(valid_px) else np.nan

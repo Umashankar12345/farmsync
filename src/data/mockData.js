@@ -345,6 +345,13 @@ export const ZONES_GEOJSON = {
 
 // ── Layer label configurations ──────────────────────────────────────
 export const LAYER_CONFIG = {
+  TrueColor: {
+    name: 'True color',
+    fullName: 'Sentinel-2 true-color composite',
+    legendMin: 'Natural colour',
+    legendMax: 'Natural colour',
+    gradient: 'linear-gradient(90deg, #374151, #84cc16, #38bdf8, #f59e0b)',
+  },
   NDVI: {
     name: 'NDVI',
     fullName: 'Normalized Difference Vegetation Index',
@@ -372,9 +379,9 @@ export const LAYER_CONFIG = {
   },
   Stress: {
     name: 'Stress',
-    fullName: 'Crop Stress Composite',
-    legendMin: 'High Stress',
-    legendMax: 'No Stress',
-    gradient: 'linear-gradient(90deg, #e11d48, #fb7185, #fbbf24, #34d399, #10b981)',
+    fullName: 'Rule-based zone stress class',
+    legendMin: 'High risk',
+    legendMax: 'Healthy',
+    gradient: 'linear-gradient(90deg, #fb7185, #fbbf24, #10b981)',
   },
 }

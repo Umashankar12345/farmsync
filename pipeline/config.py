@@ -100,8 +100,8 @@ VALID_FRACTION_THRESHOLD = 0.50   # design choice
 # Applied to the NDVI time stack (y, x, T).
 # n_segments: approximate zone count. Design choice.
 # compactness: higher = more square zones. Design choice.
-SLIC_N_SEGMENTS  = 50    # design choice
-SLIC_COMPACTNESS = 0.01  # design choice
+SLIC_N_SEGMENTS  = 8     # design choice
+SLIC_COMPACTNESS = 10.0  # design choice
 
 # ── Yield-Risk shortfall ─────────────────────────────────────────────
 # proj_peak  = zone_ndvi_now × (bench_peak / bench_now)

@@ -47,6 +47,20 @@ export default function SignupPage({ onLogin }) {
           </div>
           <p className="login-subtitle">Create Account</p>
 
+          <div style={{
+            background: 'rgba(245, 158, 11, 0.12)',
+            border: '1px solid rgba(245, 158, 11, 0.35)',
+            borderRadius: '8px',
+            padding: '7px 10px',
+            marginBottom: '1rem',
+            fontSize: '0.72rem',
+            color: '#fbbf24',
+            lineHeight: 1.35,
+            textAlign: 'center',
+          }}>
+            ℹ️ <strong>Demo Mode:</strong> Mock registration enabled. Enter any details to create a session.
+          </div>
+
           <div className="signup-grid">
             <div className="form-group">
               <label htmlFor="signup-name">Full Name</label>
