@@ -137,7 +137,12 @@ export default function Dashboard({ onLogout }) {
       <div className="map-container">
         <MapView
           dateIndex={dateIndex}
+          setDateIndex={setDateIndex}
+          dates={dates}
+          isPlaying={isPlaying}
+          togglePlay={togglePlay}
           activeLayer={activeLayer}
+          setActiveLayer={setActiveLayer}
           selectedZone={selectedZone}
           onZoneSelect={handleZoneSelect}
           meta={meta}

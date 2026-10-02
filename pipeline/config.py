@@ -100,11 +100,11 @@ SEASON_WEIGHT_MODE = "linear_increasing"   # design choice
 VALID_FRACTION_THRESHOLD = 0.50   # design choice
 
 # ── Management zones (SLIC segmentation) ────────────────────────────
-# Applied to the NDVI time stack (y, x, T).
-# n_segments: approximate zone count. Design choice.
-# compactness: higher = more square zones. Design choice.
-SLIC_N_SEGMENTS  = 8     # design choice
-SLIC_COMPACTNESS = 10.0  # design choice
+# Applied to the multi-spectral time stack (y, x, C).
+# n_segments: approximate zone count (9 zones).
+# compactness: 1.0 balances spectral contour adherence with spatial contiguity.
+SLIC_N_SEGMENTS  = 9     # design choice: 9 management zones
+SLIC_COMPACTNESS = 1.0   # design choice: allows zones to follow real field contours
 
 # ── Yield-Risk shortfall ─────────────────────────────────────────────
 # proj_peak  = zone_ndvi_now × (bench_peak / bench_now)

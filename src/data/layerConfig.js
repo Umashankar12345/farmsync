@@ -4,17 +4,18 @@
 export const LAYER_CONFIG = {
   TrueColor: {
     name: 'True color',
-    fullName: 'Sentinel-2 true-color composite',
-    legendMin: 'Natural colour',
-    legendMax: 'Natural colour',
-    gradient: 'linear-gradient(90deg, #374151, #84cc16, #38bdf8, #f59e0b)',
+    fullName: 'Sentinel-2 true-colour composite (B04/B03/B02)',
+    legendMin: '',
+    legendMax: '',
+    gradient: 'none',
+    isTrueColor: true,
   },
   NDVI: {
     name: 'NDVI',
     fullName: 'Normalized Difference Vegetation Index',
     legendMin: 'Low Vigor',
     legendMax: 'High Vigor',
-    gradient: 'linear-gradient(90deg, #fb7185, #f97316, #fbbf24, #34d399, #10b981)',
+    gradient: 'linear-gradient(90deg, #8c510a, #bf812d, #dfc27d, #ffffbf, #80cdc1, #35978f, #01665e)',
   },
   NDRE: {
     name: 'NDRE',
@@ -34,10 +35,11 @@ export const LAYER_CONFIG = {
     gradient: 'linear-gradient(90deg, #fb7185, #f97316, #fbbf24, #60a5fa, #3b82f6)',
   },
   Stress: {
-    name: 'Stress',
-    fullName: 'Rule-based zone stress class',
-    legendMin: 'High risk',
-    legendMax: 'Healthy',
-    gradient: 'linear-gradient(90deg, #fb7185, #fbbf24, #10b981)',
+    name: 'Stress (Zonal)',
+    fullName: 'Zonal Stress Classification (NDVI + NDMI)',
+    legendMin: 'High risk (scout)',
+    legendMax: 'Healthy canopy',
+    gradient: 'linear-gradient(90deg, #f43f5e, #fbbf24, #10b981)',
+    isZoneLevel: true,
   },
 }

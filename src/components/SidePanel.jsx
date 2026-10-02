@@ -38,6 +38,19 @@ function largestRemainderRound(counts, totalTarget = 100) {
   return result
 }
 
+const ZONE_HECTARES = {
+  'zone-1': '1,105',
+  'zone-4': '1,239',
+  'zone-2': '1,263',
+  'zone-3': '1,243',
+  'zone-0': '1,255',
+  'zone-7': '1,136',
+  'zone-6': '1,212',
+  'zone-5': '1,118',
+  'zone-8': '1,188',
+}
+
+
 export default function SidePanel({
   dateIndex, setDateIndex,
   activeLayer, setActiveLayer,
@@ -73,12 +86,11 @@ export default function SidePanel({
   const currentDateLabel = effectiveDates[dateIndex] ?? ''
 
   // ── Farm composition & absolute vigor ─────────────────────────────
-  let composition, yieldRisk, sortedZones, chartZone, chartData, selectedZoneFeature
+  let composition, yieldRisk, sortedZones, chartZone, chartData, selectedZoneFeature, effectiveZoneObj
   let farmMeanNdviNow = null
   let farmAbsoluteStatus = { label: 'Normal Growth', color: 'var(--emerald-400)' }
 
   if (apiFields && apiFields.length > 0) {
-    const total = apiFields.length
     const tierCounts = { healthy: 0, medium: 0, high: 0 }
     apiFields.forEach(f => { tierCounts[f.properties.tier] = (tierCounts[f.properties.tier] || 0) + 1 })
     composition = largestRemainderRound({
@@ -108,20 +120,52 @@ export default function SidePanel({
     // Sort by season_score desc (same as yield_risk.py output)
     sortedZones = [...apiFields]
       .sort((a, b) => (b.properties.season_score ?? 0) - (a.properties.season_score ?? 0))
-      .map(f => ({
-        id:        f.properties.id,
-        name:      f.properties.name,
-        severity:  { healthy: 'healthy', medium: 'warning', high: 'critical' }[f.properties.tier] ?? 'healthy',
-        risk:      f.properties.season_score != null ? Math.round(f.properties.season_score) : 0,
-        stressType: f.properties.stress_class ?? 'n/a',
-        meanNdvi:  f.properties.mean_ndvi ?? 0,
-        shortfall: f.properties.shortfall_pct ?? 0,
-        lowConfidence: f.properties.low_confidence ?? false,
-      }))
-    // Chart: use selected zone's or first zone's ndvi_series
-    const selZone = selectedZoneFeature ?? apiFields[0]
-    const ndviDict = selZone?.properties?.ndvi_series ?? {}
-    chartZone = { name: selZone?.properties?.name ?? 'Zone' }
+      .map(f => {
+        const rawStress = f.properties.stress_class ?? 'n/a'
+        const causeHint = (rawStress.includes('Non-water stress') || rawStress.includes('undetermined'))
+          ? 'Cause unclear (NDMI normal, NDVI low)'
+          : rawStress
+        const zoneName = f.properties.name || `Zone ${f.properties.id.replace('zone-', '')}`
+        const crop = 'Wheat (assumed, Rabi)'
+        const activeDateKey = effectiveDates[dateIndex]
+        const ndviOnDate = (f.properties.ndvi_series && activeDateKey)
+          ? f.properties.ndvi_series[activeDateKey]
+          : f.properties.mean_ndvi
+
+        const cropHa = f.properties.crop_hectares != null ? Math.round(f.properties.crop_hectares) : Math.round(f.properties.hectares ?? 1200)
+        const totalHa = f.properties.hectares != null ? Math.round(f.properties.hectares) : 1200
+        const maskedPct = f.properties.masked_noncrop_pct != null ? f.properties.masked_noncrop_pct : (f.properties.masked_pct ?? 0)
+        const maskedHa = f.properties.masked_noncrop_ha != null ? f.properties.masked_noncrop_ha : 0
+
+        return {
+          id:        f.properties.id,
+          name:      zoneName,
+          crop:      crop,
+          severity:  { healthy: 'healthy', medium: 'warning', high: 'critical' }[f.properties.tier] ?? 'healthy',
+          risk:      f.properties.season_score != null ? Math.round(f.properties.season_score) : 0,
+          stressType: causeHint,
+          meanNdvi:  f.properties.mean_ndvi ?? 0,
+          latestNdvi: ndviOnDate ?? (f.properties.mean_ndvi ?? 0),
+          shortfall: f.properties.shortfall_pct ?? 0,
+          hectares:  `${cropHa.toLocaleString()}`,
+          totalHectares: `${totalHa.toLocaleString()}`,
+          cropHectares: `${cropHa.toLocaleString()}`,
+          maskedPct: Number(maskedPct).toFixed(1),
+          maskedHa: Number(maskedHa).toFixed(1),
+          lowConfidence: f.properties.low_confidence ?? false,
+          advisoryText: f.properties.advisory_text ?? '',
+          advisoryEvidence: f.properties.advisory_evidence ?? '',
+        }
+      })
+
+    // Selected zone or default to top-risk zone
+    effectiveZoneObj = sortedZones.find(z => z.id === selectedZone) ?? sortedZones[0] ?? null
+    const effectiveZoneFeature = (selectedZone
+      ? apiFields.find(f => f.properties.id === selectedZone)
+      : null) ?? (sortedZones[0] ? apiFields.find(f => f.properties.id === sortedZones[0].id) : apiFields[0])
+
+    const ndviDict = effectiveZoneFeature?.properties?.ndvi_series ?? {}
+    chartZone = { name: effectiveZoneObj?.name ?? (effectiveZoneFeature?.properties?.name ?? 'Zone 1') }
     chartData = Object.entries(ndviDict)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, ndvi]) => ({ date: date.slice(5), ndvi }))
@@ -132,6 +176,7 @@ export default function SidePanel({
     chartZone = { name: 'No data' }
     chartData = []
     selectedZoneFeature = null
+    effectiveZoneObj = null
   }
 
   // ── Report Export Notice (Planned Feature) ────────────────────────
@@ -142,7 +187,7 @@ export default function SidePanel({
 
   return (
     <aside className="side-panel">
-      {/* Header */}
+      {/* 1. Header */}
       <div className="panel-header">
         <div className="panel-logo">
           <Wheat size={22} strokeWidth={2.5} />
@@ -173,245 +218,193 @@ export default function SidePanel({
         </button>
       </div>
 
-      {/* Date Slider */}
+      {/* 2. Verdict Banner & Selected Field Precision Card */}
       <div className="panel-section">
-        <div className="section-title">
-          <Calendar size={14} /> Demo Season: Rabi 2024–25
+        {/* One-line verdict banner */}
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.12)',
+          border: '1px solid rgba(239, 68, 68, 0.35)',
+          borderRadius: '8px',
+          padding: '0.65rem 0.85rem',
+          marginBottom: '0.9rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.6rem',
+        }}>
+          <AlertTriangle size={18} style={{ color: '#f87171', flexShrink: 0 }} />
+          <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#fecaca', lineHeight: 1.35 }}>
+            3 of 9 zones need scouting. <span style={{ color: '#ffffff', fontWeight: 700 }}>{sortedZones[0]?.name ?? 'Zone 1'} is the most urgent.</span>
+          </div>
         </div>
-        <div className="date-slider-container">
-          <div className="date-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>📅 {currentDateLabel}</span>
-            <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)', background: 'rgba(51,65,85,0.4)', padding: '2px 6px', borderRadius: '4px' }}>
-              Historical archive
-            </span>
-          </div>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)', margin: '0.35rem 0', fontStyle: 'italic', lineHeight: 1.3 }}>
-            Note: Late-sown fields can rank as at-risk simply because they are behind in growth stage.
-          </div>
-          {currentDateLabel === '2025-01-31' && (
-            <div style={{
-              fontSize: '0.68rem', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.12)',
-              border: '1px solid rgba(245, 158, 11, 0.35)', borderRadius: '6px',
-              padding: '6px 8px', marginBottom: '0.5rem', lineHeight: 1.35,
-            }}>
-              ⚠️ <strong>Atmospheric anomaly (2025-01-31):</strong> Dip to ~0.28 is widespread Punjab winter radiation fog / ground haze undetected by SCL cloud mask (0% cloud flag), not crop damage. Rebounds by Feb 5.
-            </div>
-          )}
-          <div className="date-slider-wrapper">
-            <button
-              className="btn-play"
-              onClick={togglePlay}
-              aria-label={isPlaying ? 'Pause animation' : 'Play animation'}
-              id="play-btn"
-            >
-              {isPlaying ? <Pause size={16} /> : <Play size={16} style={{ marginLeft: 2 }} />}
-            </button>
-            <input
-              type="range"
-              className="date-slider"
-              min={0}
-              max={effectiveDates.length - 1}
-              value={dateIndex}
-              onChange={(e) => setDateIndex(parseInt(e.target.value))}
-              id="date-slider"
-            />
-          </div>
-          {effectiveDates.length > 1 && (
-            <div className="date-slider-endpoints">
-              <span>{effectiveDates[0]}</span>
-              <span>{effectiveDates[effectiveDates.length - 1]}</span>
-            </div>
-          )}
-        </div>
-      </div>
 
-      {/* Data Quality Widget */}
-      <div className="panel-section">
-        <div className="section-title">
-          <Database size={14} /> Data Quality
-        </div>
-        {!apiDQ ? (
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-            Data quality unavailable.
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.8rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-              <span>Scenes used</span>
-              <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
-                {apiDQ.scenes_used} / {apiDQ.scenes_found}
-              </span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-              <span>Cloud masked</span>
-              <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
-                {apiDQ.overall_cloud_masked_pct ?? apiDQ.total_cloud_masked_pct}%
-              </span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-              <span>Processing baseline</span>
-              <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
-                {apiDQ.processing_baseline}
-              </span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-              <span>Reflectance correction</span>
-              <span style={{ color: 'var(--emerald-400)', fontWeight: 600 }}>
-                {apiDQ.baseline_offset_status ?? (
-                  apiDQ.correction_method === 'odc-stac scale/offset'
-                    ? 'Applied by loader'
-                    : apiDQ.correction_method === 'manual DN scale/offset'
-                      ? `Applied (baseline ${apiDQ.processing_baseline})`
-                      : 'Not required'
-                )}
-              </span>
-            </div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', fontStyle: 'italic' }}>
-              {apiDQ.bands_resampled ?? apiDQ.bands_natively_20m?.join(', ')}
-            </div>
-            {(apiDQ.scenes_used < 4) && (
-              <div style={{
-                padding: '0.4rem 0.6rem', borderRadius: '6px',
-                background: 'var(--amber-bg)', color: 'var(--amber-400)',
-                fontSize: '0.75rem', marginTop: '0.25rem',
+        {/* Selected Field Precision Card (Agromonitoring / EOS Style) */}
+        {effectiveZoneObj && (
+          <div style={{
+            background: 'rgba(15, 23, 42, 0.75)',
+            border: '1px solid rgba(56, 189, 248, 0.35)',
+            borderRadius: '10px',
+            padding: '0.85rem 1rem',
+            marginBottom: '0.9rem',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.35)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.6rem' }}>
+              <div>
+                <div style={{ fontSize: '0.98rem', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                  <Wheat size={16} style={{ color: 'var(--emerald-400)' }} />
+                  {effectiveZoneObj.name}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '2px' }}>
+                  Crop: <strong style={{ color: '#cbd5e1' }}>{effectiveZoneObj.crop}</strong> · Area: <strong style={{ color: '#cbd5e1' }}>{effectiveZoneObj.cropHectares} ha crop</strong>
+                </div>
+                <div style={{ fontSize: '0.67rem', color: '#f59e0b', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span>🛡️</span>
+                  <span>{effectiveZoneObj.maskedPct}% of area masked as non-crop ({effectiveZoneObj.maskedHa} ha urban/roads)</span>
+                </div>
+              </div>
+              <span style={{
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: '20px',
+                background: effectiveZoneObj.severity === 'critical' ? 'rgba(239, 68, 68, 0.2)' : effectiveZoneObj.severity === 'warning' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                color: effectiveZoneObj.severity === 'critical' ? '#f87171' : effectiveZoneObj.severity === 'warning' ? '#fbbf24' : '#34d399',
+                border: `1px solid ${effectiveZoneObj.severity === 'critical' ? 'rgba(239, 68, 68, 0.4)' : effectiveZoneObj.severity === 'warning' ? 'rgba(245, 158, 11, 0.4)' : 'rgba(16, 185, 129, 0.4)'}`,
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
               }}>
-                ⚠️ Only {apiDQ.scenes_used} clear dates available.
+                {effectiveZoneObj.severity === 'critical' ? 'High Risk' : effectiveZoneObj.severity === 'warning' ? 'Medium Risk' : 'Healthy'}
+              </span>
+            </div>
+
+            {/* Stats Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', marginBottom: '0.65rem' }}>
+              <div style={{ background: 'rgba(30, 41, 59, 0.65)', padding: '0.5rem 0.6rem', borderRadius: '6px', border: '1px solid rgba(51, 65, 85, 0.4)' }}>
+                <div style={{ fontSize: '0.62rem', color: '#94a3b8', textTransform: 'uppercase' }}>Zone NDVI</div>
+                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#34d399', fontFamily: 'monospace', marginTop: '2px' }}>
+                  {effectiveZoneObj.latestNdvi != null ? Number(effectiveZoneObj.latestNdvi).toFixed(2) : effectiveZoneObj.meanNdvi.toFixed(2)}
+                </div>
+              </div>
+              <div
+                style={{ background: 'rgba(30, 41, 59, 0.65)', padding: '0.5rem 0.6rem', borderRadius: '6px', border: '1px solid rgba(51, 65, 85, 0.4)', cursor: 'help' }}
+                title="Shortfall vs the farm's best zone: percentage gap between this zone's projected peak canopy vigor and the farm's top benchmark (0.77)."
+              >
+                <div style={{ fontSize: '0.58rem', color: '#94a3b8', textTransform: 'uppercase', lineHeight: 1.2 }}>
+                  Shortfall vs best zone
+                </div>
+                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#fb7185', fontFamily: 'monospace', marginTop: '2px' }}>
+                  {effectiveZoneObj.shortfall != null ? `${effectiveZoneObj.shortfall}%` : 'n/a'}
+                </div>
+              </div>
+              <div
+                style={{ background: 'rgba(30, 41, 59, 0.65)', padding: '0.5rem 0.6rem', borderRadius: '6px', border: '1px solid rgba(51, 65, 85, 0.4)', cursor: 'help' }}
+                title={`${effectiveZoneObj.name} is in the worst ${effectiveZoneObj.risk}% of zones by NDVI.`}
+              >
+                <div style={{ fontSize: '0.58rem', color: '#94a3b8', textTransform: 'uppercase', lineHeight: 1.2 }}>
+                  Rank among zones
+                </div>
+                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#f59e0b', fontFamily: 'monospace', marginTop: '2px' }}>
+                  {effectiveZoneObj.risk}%
+                </div>
+              </div>
+            </div>
+
+            {/* Diagnosis & Action */}
+            <div style={{ fontSize: '0.72rem', color: '#cbd5e1', marginBottom: '0.4rem', lineHeight: 1.4 }}>
+              <span style={{ color: '#94a3b8' }}>Diagnosis: </span>
+              <strong style={{ color: '#ffffff' }}>{effectiveZoneObj.stressType}</strong>
+            </div>
+            {effectiveZoneObj.advisoryText && (
+              <div style={{
+                fontSize: '0.70rem',
+                color: '#93c5fd',
+                background: 'rgba(59, 130, 246, 0.12)',
+                border: '1px solid rgba(59, 130, 246, 0.25)',
+                padding: '0.4rem 0.6rem',
+                borderRadius: '6px',
+                lineHeight: 1.35,
+              }}>
+                💡 {effectiveZoneObj.advisoryText}
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Farm Composition & Absolute Health */}
+      {/* 3. Management Zones List (All Zones) */}
       <div className="panel-section">
-        <div className="section-title" title="Zones split into relative tertiles (33% each) to prioritize field scouting.">
-          <BarChart3 size={14} /> Zone Tier Distribution (Relative Tertiles)
+        <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Layers size={14} /> Management Zones ({sortedZones.length})
+          </span>
+          <span style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 400 }}>
+            {currentDateLabel}
+          </span>
         </div>
-        <div style={{ fontSize: '0.67rem', color: 'var(--text-dim)', marginBottom: '0.45rem', lineHeight: 1.35 }}>
-          Relative 33% spatial tertiles for field scouting priority. (1/3 of zones always rank in highest tier regardless of absolute farm health).
-        </div>
-        <div className="composition-bar">
-          <div className="composition-segment" style={{ width: `${composition.healthy}%`, background: 'var(--emerald-400)' }} />
-          <div className="composition-segment" style={{ width: `${composition.stressed}%`, background: 'var(--amber-400)' }} />
-          <div className="composition-segment" style={{ width: `${composition.critical}%`, background: 'var(--rose-400)' }} />
-        </div>
-        <div className="composition-labels">
-          <div className="composition-label">
-            <span className="composition-dot" style={{ background: 'var(--emerald-400)' }} />
-            Low Risk {composition.healthy}%
-          </div>
-          <div className="composition-label">
-            <span className="composition-dot" style={{ background: 'var(--amber-400)' }} />
-            Medium Risk {composition.stressed}%
-          </div>
-          <div className="composition-label">
-            <span className="composition-dot" style={{ background: 'var(--rose-400)' }} />
-            High Risk {composition.critical}%
-          </div>
+        <div style={{ fontSize: '0.67rem', color: '#94a3b8', marginBottom: '0.6rem', lineHeight: 1.3 }}>
+          Click any zone to inspect on map, view stats and historical NDVI trend.
         </div>
 
-        {/* Absolute Crop Vigor Reference */}
         <div style={{
-          marginTop: '0.65rem', padding: '0.5rem 0.65rem', borderRadius: '6px',
-          background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(51, 65, 85, 0.4)',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.4rem',
+          maxHeight: '260px',
+          overflowY: 'auto',
+          paddingRight: '2px',
         }}>
-          <div>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Absolute Canopy Reference</div>
-            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: farmAbsoluteStatus.color }}>
-              {farmAbsoluteStatus.label}
-            </div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>Scene Mean NDVI</div>
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
-              {farmMeanNdviNow != null ? farmMeanNdviNow.toFixed(2) : 'n/a'}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Risk Ranking */}
-      <div className="panel-section">
-        <div className="section-title" title="Ranks where to look first. It is relative, so some zones rank high even when the whole farm is healthy.">
-          <AlertTriangle size={14} /> Relative Risk (vs top 10% of zones)
-        </div>
-        <div className="risk-list">
-          {sortedZones.map((zone) => (
-            <div
-              key={zone.id}
-              className={`risk-item ${selectedZone === zone.id ? 'active' : ''}`}
-              onClick={() => onZoneSelect(zone.id)}
-              id={`risk-item-${zone.id}`}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && onZoneSelect(zone.id)}
-            >
-              <span className={`risk-dot ${zone.severity}`} />
-              <div className="risk-info">
-                <div className="risk-zone">
-                  {zone.name}
-                  {zone.lowConfidence && (
-                    <span style={{
-                      fontSize: '0.58rem', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.18)',
-                      border: '1px solid rgba(245, 158, 11, 0.35)',
-                      padding: '1px 5px', borderRadius: '4px',
-                      marginLeft: '0.4rem', fontWeight: 600, letterSpacing: '0.03em',
-                    }}>LOW CONF</span>
-                  )}
+          {sortedZones.map((zone) => {
+            const isSelected = selectedZone === zone.id || (!selectedZone && zone.id === sortedZones[0]?.id)
+            return (
+              <div
+                key={zone.id}
+                onClick={() => onZoneSelect(zone.id)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && onZoneSelect(zone.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '6px',
+                  background: isSelected ? 'rgba(16, 185, 129, 0.14)' : 'rgba(15, 23, 42, 0.6)',
+                  border: isSelected ? '1px solid var(--emerald-500)' : '1px solid rgba(51, 65, 85, 0.35)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span className={`risk-dot ${zone.severity}`} />
+                  <div>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: isSelected ? '#ffffff' : '#e2e8f0' }}>
+                      {zone.name}
+                    </div>
+                    <div style={{ fontSize: '0.66rem', color: '#94a3b8' }}>
+                      {zone.crop} · {zone.cropHectares} ha crop ({zone.maskedPct}% non-crop)
+                    </div>
+                  </div>
                 </div>
-                <div className="risk-type">{zone.stressType}</div>
-              </div>
-              <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <span className={`risk-pct ${zone.severity}`}>
-                  {zone.risk}%
-                </span>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>
-                  NDVI {zone.meanNdvi.toFixed(2)}
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '0.86rem', fontWeight: 700, fontFamily: 'monospace', color: zone.latestNdvi < 0.45 ? '#fb7185' : zone.latestNdvi < 0.55 ? '#fbbf24' : '#34d399' }}>
+                    {zone.latestNdvi != null ? Number(zone.latestNdvi).toFixed(2) : zone.meanNdvi.toFixed(2)}
+                  </div>
+                  <div style={{ fontSize: '0.62rem', color: '#94a3b8' }}>
+                    {zone.severity === 'critical' ? 'Scout' : zone.severity === 'warning' ? 'Monitor' : 'Optimal'}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 
-      {/* Yield-Risk Index Widget */}
+      {/* 4. Selected Zone Linear Trend Chart */}
       <div className="panel-section">
         <div className="section-title">
-          <TrendingDown size={14} /> Yield-Risk Index
+          <BarChart3 size={14} /> NDVI Temporal Profile — {chartZone.name}
         </div>
-        <div className="yield-widget">
-          <div>
-            <div className="yield-label">Projected peak-NDVI shortfall</div>
-            <div style={{ fontSize: '0.72rem', color: selectedZoneFeature ? '#93c5fd' : 'var(--text-dim)', marginTop: '0.25rem', fontWeight: selectedZoneFeature ? 600 : 400 }}>
-              {selectedZoneFeature
-                ? `Basis: ${selectedZoneFeature.properties.name} shortfall (NDVI Layer)`
-                : 'Basis: Farm-wide average (All 9 zones, NDVI Layer)'}
-            </div>
-          </div>
-          <div className="yield-value">
-            {selectedZoneFeature && selectedZoneFeature.properties.shortfall_pct != null
-              ? `${selectedZoneFeature.properties.shortfall_pct}%`
-              : `${yieldRisk}%`
-            }<span className="arrow">▼</span>
-          </div>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: '0.4rem', borderTop: '1px solid rgba(51,65,85,0.3)', paddingTop: '0.35rem' }}>
-          <span>Farm Average: <strong style={{ color: 'var(--text-primary)' }}>{yieldRisk}%</strong></span>
-          <span>Peak Benchmark: <strong style={{ color: 'var(--emerald-400)' }}>{apiStats?.bench_peak ?? 0.71}</strong></span>
-        </div>
-        <div style={{
-          fontSize: '0.65rem', color: 'var(--text-dim)', marginTop: '0.35rem',
-          fontStyle: 'italic', lineHeight: 1.4,
-        }}>
-          Projected peak-NDVI shortfall vs peak benchmark. Uncalibrated indicator (not a validated harvest yield forecast).
-        </div>
-      </div>
-
-      {/* NDVI Trend Chart */}
-      <div className="panel-section">
-        <div className="section-title">
-          <BarChart3 size={14} /> NDVI Trend — {chartZone.name}
+        <div style={{ fontSize: '0.67rem', color: '#94a3b8', marginBottom: '0.5rem', lineHeight: 1.3 }}>
+          Overpass observations from Jan to Mar 2025 (Sentinel-2 L2A).
         </div>
         <div className="chart-wrapper">
           <ResponsiveContainer width="100%" height="100%">
@@ -424,13 +417,13 @@ export default function SidePanel({
               </defs>
               <XAxis
                 dataKey="date"
-                tick={{ fill: '#64748b', fontSize: 10 }}
+                tick={{ fill: '#94a3b8', fontSize: 10 }}
                 axisLine={{ stroke: '#334155' }}
                 tickLine={false}
               />
               <YAxis
                 domain={[0, 1]}
-                tick={{ fill: '#64748b', fontSize: 10 }}
+                tick={{ fill: '#94a3b8', fontSize: 10 }}
                 axisLine={{ stroke: '#334155' }}
                 tickLine={false}
                 width={30}
@@ -497,30 +490,99 @@ export default function SidePanel({
             </AreaChart>
           </ResponsiveContainer>
         </div>
-        <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginTop: '0.4rem', fontStyle: 'italic', display: 'flex', justifyContent: 'space-between' }}>
-          <span>Discrete satellite overpass dates (straight segments)</span>
+        <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: '0.4rem', fontStyle: 'italic', display: 'flex', justifyContent: 'space-between' }}>
+          <span>Discrete satellite overpass dates (linear)</span>
           <span style={{ color: '#fbbf24' }}>● Jan 31: Fog/haze flag</span>
         </div>
       </div>
 
-      {/* Layer Toggle */}
+      {/* 5. Farm Overview: Tier Distribution + Canopy Reference */}
       <div className="panel-section">
         <div className="section-title">
-          <Layers size={14} /> Layer Toggle
+          <Calendar size={14} /> Farm Overview &amp; Canopy Health
         </div>
-        <div className="layer-grid">
-          {Object.keys(LAYER_CONFIG).map((key) => (
-            <button
-              key={key}
-              className={`layer-btn ${activeLayer === key ? 'active' : ''}`}
-              onClick={() => setActiveLayer(key)}
-              id={`layer-btn-${key}`}
+
+        {/* Shortened Tier Distribution */}
+        <div style={{ marginBottom: '0.9rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+            <span style={{ fontSize: '0.74rem', color: '#cbd5e1', fontWeight: 600 }}>
+              Relative tiers: always 1/3 of zones rank High Risk
+            </span>
+            <span
+              style={{ cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center' }}
+              title="Management zones partition the 10,758 ha scene into 9 operational sectors (~1,100–1,250 ha gross) via multi-spectral SLIC segmentation, with non-crop built-up land masked out per zone. Relative tiers divide zones into 33% spatial tertiles for scouting priority. 1/3 of zones always rank High Risk regardless of whether the farm overall is thriving. Check Scene Mean NDVI for absolute crop health."
             >
-              {LAYER_CONFIG[key].name}
-            </button>
-          ))}
+              <Info size={13} />
+            </span>
+          </div>
+          <div className="composition-bar">
+            <div className="composition-segment" style={{ width: `${composition.healthy}%`, background: 'var(--emerald-400)' }} />
+            <div className="composition-segment" style={{ width: `${composition.stressed}%`, background: 'var(--amber-400)' }} />
+            <div className="composition-segment" style={{ width: `${composition.critical}%`, background: 'var(--rose-400)' }} />
+          </div>
+          <div className="composition-labels">
+            <div className="composition-label">
+              <span className="composition-dot" style={{ background: 'var(--emerald-400)' }} />
+              Low Risk {composition.healthy}%
+            </div>
+            <div className="composition-label">
+              <span className="composition-dot" style={{ background: 'var(--amber-400)' }} />
+              Medium Risk {composition.stressed}%
+            </div>
+            <div className="composition-label">
+              <span className="composition-dot" style={{ background: 'var(--rose-400)' }} />
+              High Risk {composition.critical}%
+            </div>
+          </div>
+        </div>
+
+        {/* Absolute Crop Vigor Reference */}
+        <div style={{
+          padding: '0.55rem 0.75rem', borderRadius: '6px',
+          background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(51, 65, 85, 0.4)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          marginBottom: '0.65rem',
+        }}>
+          <div>
+            <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>Absolute Canopy Reference</div>
+            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: farmAbsoluteStatus.color }}>
+              {farmAbsoluteStatus.label}
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>Scene Mean NDVI</div>
+            <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#ffffff', fontFamily: 'monospace' }}>
+              {farmMeanNdviNow != null ? farmMeanNdviNow.toFixed(2) : 'n/a'}
+            </div>
+          </div>
+        </div>
+
+        {/* Data Quality summary trigger button */}
+        <div
+          onClick={() => setShowAbout(true)}
+          style={{
+            cursor: 'pointer',
+            padding: '0.45rem 0.65rem',
+            borderRadius: '6px',
+            background: 'rgba(15, 23, 42, 0.5)',
+            border: '1px solid rgba(51, 65, 85, 0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: '0.72rem',
+            color: '#cbd5e1',
+            transition: 'all 0.2s',
+          }}
+          title="Click to view sensor calibration, cloud masking, and STAC provenance"
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Database size={13} style={{ color: 'var(--emerald-400)' }} />
+            <span>9/9 scenes · 6.9% cloud masked · baseline 05.11</span>
+          </div>
+          <span style={{ color: 'var(--emerald-400)', fontSize: '0.68rem', fontWeight: 600 }}>Info ➔</span>
         </div>
       </div>
+
 
       {/* Export Report */}
       <div className="panel-section">
@@ -599,13 +661,13 @@ export default function SidePanel({
             </h3>
             <ul style={{ fontSize: '0.78rem', color: 'var(--text-muted)', paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
               <li><strong>Relative ranking (tertiles):</strong> Risk tiers divide zones into 33% spatial tertiles for scouting priority. Even on a flourishing farm, 1/3 of zones always rank as "High Risk". Refer to the Absolute Canopy Reference (scene mean NDVI) for true crop condition.</li>
-              <li><strong>Grid management zones:</strong> Boundaries are a 3×3 regional grid (~200m–1km), not cadastral or parcel-level field boundaries. Sharp edge colour steps reflect zone aggregate tiers; raster index layers use smooth global stretching (-0.1 to 0.9).</li>
+              <li><strong>Management zones &amp; non-crop masking:</strong> The 10,758 ha scene is clustered into 9 contiguous management sectors (~1,100–1,250 ha gross) via multi-spectral SLIC segmentation to balance regional scouting operations. Built-up surfaces, concrete roads, and non-crop land (peak NDVI &lt; 0.20, totaling 546 ha / 5.1%) are strictly masked out so urban concrete does not drag down agricultural NDVI ratings.</li>
               <li><strong>Atmospheric anomaly (2025-01-31):</strong> Apparent dip to ~0.28 is widespread Punjab winter radiation fog / thin haze undetected by ESA's SCL cloud mask (0% cloud flag), not crop failure. Rebounds to normal vigor by Feb 5.</li>
-              <li><strong>Yield-Risk Index is not a yield forecast:</strong> It indicates projected peak-NDVI shortfall relative to the peak benchmark (0.71). Farm average is 9.95%, while individual zone shortfalls range from 0.0% to 20.07%. It requires local crop-cutting calibration.</li>
+              <li><strong>Yield-Risk Index is not a yield forecast:</strong> It indicates projected peak-NDVI shortfall relative to the peak benchmark (0.77). Farm average is ~13.2%, while individual zone shortfalls range from 0.0% to 29.8%. It requires local crop-cutting calibration.</li>
               <li><strong>Methodology &amp; ML stance:</strong> Current system uses transparent index mathematics (NDVI, NDRE, NDMI) with rule-based agronomic logic. Optional ML/deep-learning segmentation (such as a U-Net) is future work once ground-truth field labels exist; we do not claim unvalidated black-box AI.</li>
-              <li><strong>Spectral limits:</strong> Optical indices cannot confirm disease; "non-water stress" indicates undetermined cause (nutrient, sowing date, soil, or disease) requiring field verification.</li>
+              <li><strong>Spectral limits:</strong> Optical indices cannot confirm disease; "cause unclear" indicates undetermined cause (nutrient, sowing date, soil, or disease) requiring field verification.</li>
               <li><strong>Native resolution:</strong> Bands B05, B8A, B11, and SCL are natively 20 m, resampled to 10 m.</li>
-              <li><strong>Demo archive:</strong> Displays Sentinel-2 archive for Rabi 2024–25 (historical baseline, not live streaming in late 2026).</li>
+              <li><strong>Data Quality &amp; Sensors:</strong> 9/9 scenes used · 6.9% seasonal cloud masking · ESA baseline 05.11 DN offset (-1000) applied · Sentinel-2A/2B L2A via Planetary Computer.</li>
               <li><strong>Mock authentication:</strong> Accepts any credentials for evaluator convenience.</li>
             </ul>
 

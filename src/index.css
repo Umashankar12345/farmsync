@@ -460,6 +460,91 @@ body {
   filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9);
 }
 
+/* Compact Map Layer Toggle (Top-Left) */
+.map-layer-control {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 1000;
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-glass);
+}
+
+.map-layer-btn {
+  border: 0;
+  border-radius: 5px;
+  padding: 0.35rem 0.65rem;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.map-layer-btn:hover {
+  color: var(--text-primary);
+  background: rgba(51, 65, 85, 0.45);
+}
+
+.map-layer-btn.active {
+  background: var(--emerald-500);
+  color: #020617;
+  font-weight: 700;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.35);
+}
+
+/* Pixel Inspector Card */
+.pixel-inspector-card {
+  position: absolute;
+  top: 52px;
+  right: 12px;
+  width: 330px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  border-radius: 12px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65), 0 0 24px rgba(56, 189, 248, 0.18);
+  padding: 1rem;
+  color: #f1f5f9;
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Cursor Coordinates Badge (Bottom Right, above Zoom Controls) */
+.cursor-coords-badge {
+  position: absolute;
+  bottom: 85px;
+  right: 14px;
+  z-index: 999;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 0.72rem;
+  font-family: monospace;
+  color: #cbd5e1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
 .basemap-control {
   position: absolute;
   top: 10px;
@@ -858,11 +943,11 @@ body {
 }
 
 /* ========================================
-   Map Legend (Bottom Left)
+   Map Legend (Bottom Left, above bottom strip)
    ======================================== */
 .map-legend-wrapper {
   position: absolute;
-  bottom: 24px;
+  bottom: 85px;
   left: 16px;
   z-index: 999;
   display: flex;
@@ -873,50 +958,52 @@ body {
 }
 
 .map-data-badge {
-  background: rgba(15, 23, 42, 0.88);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(51, 65, 85, 0.45);
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(51, 65, 85, 0.55);
   border-radius: 6px;
-  padding: 3px 8px;
-  font-size: 0.65rem;
-  color: var(--text-dim);
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  color: #cbd5e1;
   display: flex;
   align-items: center;
   gap: 6px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   pointer-events: none;
 }
 
 .map-badge-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: #10b981;
+  background: #34d399;
 }
 
 .map-legend {
-  padding: 0.75rem 1rem;
+  padding: 0.85rem 1.15rem;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 1.25rem;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(51, 65, 85, 0.55);
 }
 
-.legend-index { min-width: 160px; }
+.legend-index { min-width: 175px; }
 
 .legend-zones {
   display: grid;
   grid-template-columns: repeat(2, max-content);
-  gap: 0.3rem 0.65rem;
-  font-size: 0.62rem;
-  color: var(--text-dim);
+  gap: 0.4rem 0.85rem;
+  font-size: 0.78rem;
+  color: #cbd5e1;
   white-space: nowrap;
 }
 
-.legend-zones span { display: flex; align-items: center; gap: 0.3rem; }
-.legend-swatch { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.legend-swatch.healthy { background: #10b981; }
-.legend-swatch.medium { background: #fbbf24; }
-.legend-swatch.high { background: #fb7185; }
+.legend-zones span { display: flex; align-items: center; gap: 0.4rem; }
+.legend-swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.legend-swatch.healthy { background: #01665e; }
+.legend-swatch.medium { background: #dfc27d; }
+.legend-swatch.high { background: #8c510a; }
 .legend-swatch.noncrop { background: #94a3b8; }
 
 @keyframes fadeIn {
@@ -925,30 +1012,31 @@ body {
 }
 
 .legend-title {
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   font-weight: 600;
-  color: var(--text-dim);
+  color: #cbd5e1;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
 }
 
 .legend-bar {
-  width: 160px;
+  width: 175px;
   height: 10px;
   border-radius: 5px;
-  background: linear-gradient(90deg, #10b981, #34d399, #fbbf24, #f97316, #fb7185, #e11d48);
+  margin-top: 4px;
 }
 
 .legend-labels {
   display: flex;
   justify-content: space-between;
-  width: 160px;
-  margin-top: 0.25rem;
+  width: 175px;
+  margin-top: 0.35rem;
 }
 
 .legend-labels span {
-  font-size: 0.65rem;
-  color: var(--text-dim);
+  font-size: 0.78rem;
+  color: #cbd5e1;
+  font-weight: 500;
 }
 
 /* ========================================
@@ -1165,3 +1253,192 @@ body {
     height: 50vh;
   }
 }
+
+/* ========================================
+   Map Location & Provenance Header
+   ======================================== */
+.map-location-badge {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.90);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  border-radius: 20px;
+  padding: 5px 14px;
+  font-size: 0.76rem;
+  color: #f1f5f9;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.map-location-badge .location-name {
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.map-location-badge .location-coords {
+  color: #94a3b8;
+  font-family: monospace;
+  font-size: 0.72rem;
+}
+
+.map-location-badge .location-tag {
+  background: rgba(16, 185, 129, 0.16);
+  color: #34d399;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.map-location-badge .location-separator {
+  color: #475569;
+}
+
+/* ========================================
+   Satellite Passes Timeline Strip (Agromonitoring Style)
+   ======================================== */
+.satellite-strip-container {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(51, 65, 85, 0.65);
+  border-radius: 12px;
+  padding: 6px 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+  max-width: calc(100% - 240px);
+}
+
+.strip-play-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--emerald-500);
+  color: #020617;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.strip-play-btn:hover {
+  background: #34d399;
+  transform: scale(1.05);
+}
+
+.satellite-cards-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.satellite-cards-track::-webkit-scrollbar {
+  display: none;
+}
+
+.satellite-pass-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 8px;
+  min-width: 68px;
+  border-radius: 6px;
+  background: rgba(30, 41, 59, 0.65);
+  border: 1px solid rgba(51, 65, 85, 0.45);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  text-align: left;
+}
+
+.satellite-pass-card:hover {
+  background: rgba(51, 65, 85, 0.8);
+  border-color: rgba(148, 163, 184, 0.6);
+  transform: translateY(-1px);
+}
+
+.satellite-pass-card.active {
+  background: rgba(16, 185, 129, 0.16);
+  border: 1.5px solid var(--emerald-400);
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+}
+
+.satellite-pass-card .pass-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.satellite-pass-card.active .pass-header {
+  color: #ffffff;
+}
+
+.satellite-pass-card .pass-sensor {
+  font-size: 0.58rem;
+  color: #94a3b8;
+  font-weight: 500;
+  background: rgba(15, 23, 42, 0.6);
+  padding: 1px 3px;
+  border-radius: 3px;
+}
+
+.satellite-pass-card .pass-footer {
+  font-size: 0.64rem;
+  display: flex;
+  align-items: center;
+}
+
+.pass-condition.clear {
+  color: #34d399;
+}
+
+.pass-condition.fog {
+  color: #fbbf24;
+}
+
+.pass-condition.cloud {
+  color: #f87171;
+}
+
+.pass-condition.partial {
+  color: #60a5fa;
+}
+
+/* Tooltip for map fields */
+.field-leaflet-tooltip {
+  background: rgba(15, 23, 42, 0.94) !important;
+  border: 1px solid rgba(56, 189, 248, 0.5) !important;
+  color: #f8fafc !important;
+  border-radius: 6px !important;
+  padding: 4px 8px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+  pointer-events: none;
+}
+.field-leaflet-tooltip::before {
+  border-top-color: rgba(15, 23, 42, 0.94) !important;
+}
+

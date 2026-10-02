@@ -33,49 +33,50 @@ except ImportError as e:
     sys.exit(f"STOP: Missing package — {e}")
 
 # ─────────────────────────────────────────────────────────────────────
-def compute_zones(ndvi_stack, transform, src_crs_wkt):
+def compute_zones(ndvi_stack, ndmi_stack, transform, src_crs_wkt):
     """
-    Build management zones via SLIC on the NDVI time stack.
-    Falls back to a regular grid if SLIC fails.
-    Returns a (y, x) integer label array and a source string.
+    Build data-driven management zones via multi-spectral SLIC segmentation
+    on the NDVI & NDMI time stack.
+    Clusters pixels into natural contiguous zones following real crop vigour
+    and soil moisture gradients.
     """
     T, H, W = ndvi_stack.shape
-    # Fill NaN with per-date mean for SLIC (masked out afterwards)
-    stack_filled = ndvi_stack.copy()
-    for t in range(T):
-        mean_t = np.nanmean(ndvi_stack[t])
-        if np.isnan(mean_t):
-            mean_t = 0.0
-        stack_filled[t] = np.where(np.isnan(ndvi_stack[t]), mean_t, ndvi_stack[t])
+    # Fill NaN with 0.0 for SLIC feature array
+    stack_filled_ndvi = np.nan_to_num(ndvi_stack, nan=0.0)
+    stack_filled_ndmi = np.nan_to_num(ndmi_stack, nan=0.0)
 
-    image = np.transpose(stack_filled, (1, 2, 0))  # (H, W, T) for SLIC
+    # Feature stack: multi-temporal NDVI + recent NDMI moisture
+    features = np.concatenate([stack_filled_ndvi, stack_filled_ndmi[-2:]], axis=0)
+    image = np.transpose(features, (1, 2, 0))  # (H, W, C) for SLIC
+
     try:
         segments = slic(
             image,
             n_segments=SLIC_N_SEGMENTS,
             compactness=SLIC_COMPACTNESS,
+            convert2lab=False,
             channel_axis=-1,
             start_label=0,
             enforce_connectivity=True,
-            min_size_factor=0.1,
-            max_size_factor=10.0,
+            min_size_factor=0.2,
+            max_size_factor=5.0,
         )
         if len(np.unique(segments)) < 3:
             raise ValueError("SLIC produced fewer than 3 usable management zones")
-        source = "SLIC on NDVI time-stack (design choice)"
-        print(f"  SLIC succeeded: {len(np.unique(segments))} segments")
+        source = "Data-driven multi-spectral SLIC clustering (NDVI & NDMI time-series)"
+        print(f"  SLIC succeeded: {len(np.unique(segments))} data-driven zones")
     except Exception as e:
         warnings.warn(f"SLIC failed ({e}). Falling back to regular grid.")
-        # 10x10 grid fallback
-        rows = np.linspace(0, H, 11, dtype=int)
-        cols = np.linspace(0, W, 11, dtype=int)
+        # 3x3 grid fallback
+        rows = np.linspace(0, H, 4, dtype=int)
+        cols = np.linspace(0, W, 4, dtype=int)
         segments = np.zeros((H, W), dtype=int)
         idx = 0
-        for r in range(10):
-            for c in range(10):
+        for r in range(3):
+            for c in range(3):
                 segments[rows[r]:rows[r+1], cols[c]:cols[c+1]] = idx
                 idx += 1
-        source = "Regular 10x10 grid fallback (SLIC failed)"
+        source = "Regular 3x3 grid fallback (SLIC failed)"
         print(f"  Using grid fallback: {len(np.unique(segments))} zones")
 
     invalid_pixels = ~np.isfinite(ndvi_stack).any(axis=0)
@@ -88,7 +89,7 @@ def compute_zones(ndvi_stack, transform, src_crs_wkt):
 def polygonize_zones(segments, raster_transform, src_crs_str):
     """
     Convert raster segments to GeoJSON polygons in EPSG:4326.
-    Returns list of (zone_label, shapely_polygon) tuples.
+    Returns list of (zone_label, shapely_polygon, area_hectares) tuples.
     """
     transformer = Transformer.from_crs(src_crs_str, "EPSG:4326", always_xy=True)
     polys = []
@@ -102,23 +103,22 @@ def polygonize_zones(segments, raster_transform, src_crs_str):
         if not zone_shapes:
             continue
         merged = shapely.ops.unary_union(zone_shapes)
-        # Reproject from UTM to WGS84
-        def reproject_coords(coords):
-            xs = [c[0] for c in coords]
-            ys = [c[1] for c in coords]
-            lons, lats = transformer.transform(xs, ys)
-            return list(zip(lons, lats))
-
-        if merged.geom_type == "Polygon":
-            ext = reproject_coords(list(merged.exterior.coords))
-            poly_4326 = sg.Polygon(ext)
+        # Smooth raster pixel stair-stepping slightly (15m tolerance preserves field contours)
+        smoothed = merged.simplify(15.0, preserve_topology=True)
+        if smoothed.geom_type == "MultiPolygon":
+            largest = max(smoothed.geoms, key=lambda g: g.area)
         else:
-            # MultiPolygon: take largest
-            largest = max(merged.geoms, key=lambda g: g.area)
-            ext = reproject_coords(list(largest.exterior.coords))
-            poly_4326 = sg.Polygon(ext)
+            largest = smoothed
+        # 10m pixels: count * 100 m² / 10,000 m²/ha
+        pixel_count = int(np.sum(mask))
+        area_ha = round(pixel_count / 100.0, 1)
 
-        polys.append((int(lbl), poly_4326))
+        # Reproject from UTM to WGS84
+        xs_p, ys_p = largest.exterior.coords.xy
+        lons, lats = transformer.transform(list(xs_p), list(ys_p))
+        poly_4326 = sg.Polygon(list(zip(lons, lats)))
+
+        polys.append((int(lbl), poly_4326, area_ha))
     return polys
 
 
@@ -129,13 +129,13 @@ def advisory(severity, stress_class, ndvi, bench):
     """
     evidence = f"NDVI {ndvi:.2f} (zone) vs {bench:.2f} (top-{BENCHMARK_PERCENTILE}% benchmark)"
     if severity == "high" and stress_class == "Water-related stress":
-        text = "Consider irrigation and verify in the field."
+        text = "Consider irrigation check and verify soil moisture in the field."
     elif severity == "high":
-        text = "Scout this zone within a few days. Cause is undetermined."
+        text = "Scout for sowing date, nutrient or soil issues (field verification suggested)."
     elif severity == "medium":
-        text = "Monitor. Early signs of stress."
+        text = "Monitor canopy development. Early variance from top benchmark."
     else:
-        text = "No action suggested."
+        text = "Canopy vigor aligns with top seasonal benchmarks. Normal monitoring."
     return {"text": text, "evidence": evidence}
 
 
@@ -169,10 +169,22 @@ def main():
 
     # ── Build management zones ────────────────────────────────────────
     print("\n[1/6] Building management zones …")
-    segments, zone_source = compute_zones(ndvi_stack, raster_transform, TARGET_CRS)
+    segments, zone_source = compute_zones(ndvi_stack, ndmi_stack, raster_transform, TARGET_CRS)
     zone_labels = np.unique(segments)
     print(f"  Zone source  : {zone_source}")
     print(f"  Raw segments : {len(zone_labels)}")
+
+    # ── Non-Crop / Built-up Masking ──────────────────────────────────
+    # Pixels where seasonal peak NDVI < 0.20 represent permanent non-crop surfaces
+    # (concrete roads, urban buildings of Ludhiana, canals, bare wasteland).
+    # Masking them prevents urban concrete from depressing crop vigor statistics.
+    masked_ndvi = np.where(valid_stack, ndvi_stack, np.nan)
+    peak_ndvi = np.nanmax(masked_ndvi, axis=0)
+    crop_mask = (peak_ndvi >= 0.20) & np.isfinite(peak_ndvi)
+    non_crop_pixels = int(np.sum(~crop_mask))
+    total_scene_pixels = H * W
+    masked_ha = round(non_crop_pixels * 100 / 10000.0, 1)
+    print(f"  Non-crop mask: {non_crop_pixels:,} pixels ({non_crop_pixels/total_scene_pixels*100:.2f}%) = {masked_ha} ha masked (NDVI floor < 0.20)")
 
     # ── Per-zone, per-date stats ──────────────────────────────────────
     print("\n[2/6] Computing per-zone per-date NDVI/NDRE/NDMI …")
@@ -181,10 +193,14 @@ def main():
         if lbl < 0:
             continue
         mask2d = segments == lbl
+        zone_crop_mask = mask2d & crop_mask
+        zone_pixels = zone_crop_mask.sum()
+        zone_total_pixels = mask2d.sum()
+        zone_masked_pixels = zone_total_pixels - zone_pixels
+
         ndvi_series, ndmi_series, ndre_series, vf_series = [], [], [], []
         for t in range(T):
-            valid_px = valid_stack[t] & mask2d
-            zone_pixels = mask2d.sum()
+            valid_px = valid_stack[t] & zone_crop_mask
             vf = float(valid_px.sum() / zone_pixels) if zone_pixels else 0.0
             ndvi_t = float(np.nanmean(ndvi_stack[t][valid_px])) if np.any(valid_px) else np.nan
             ndmi_t = float(np.nanmean(ndmi_stack[t][valid_px])) if np.any(valid_px) else np.nan
@@ -198,6 +214,11 @@ def main():
             "ndmi": ndmi_series,
             "ndre": ndre_series,
             "valid_frac": vf_series,
+            "total_pixels": int(zone_total_pixels),
+            "crop_pixels": int(zone_pixels),
+            "masked_pixels": int(zone_masked_pixels),
+            "masked_ha": round(zone_masked_pixels * 100 / 10000.0, 1),
+            "masked_pct": round(zone_masked_pixels / zone_total_pixels * 100, 1) if zone_total_pixels else 0,
         }
 
     # ── Per-date benchmark and risk ───────────────────────────────────
@@ -318,7 +339,8 @@ def main():
     # ── Polygonize and build GeoJSON ──────────────────────────────────
     print("\n[6/6] Polygonizing zones and writing GeoJSON …")
     polys = polygonize_zones(segments, raster_transform, TARGET_CRS)
-    poly_map = {lbl: poly for lbl, poly in polys}
+    poly_map = {lbl: poly for lbl, poly, _ in polys}
+    area_map = {lbl: ha for lbl, _, ha in polys}
 
     features = []
     for lbl in sorted(crop_labels, key=lambda l: -(zone_stats[l]["season_score"] or 0)):
@@ -337,6 +359,7 @@ def main():
         props = {
             "id":           f"zone-{lbl}",
             "name":         f"Zone {lbl}",
+            "crop":         "Wheat (assumed, Rabi)",
             "tier":         zs["tier"],
             "season_score": round(zs["season_score"] or 0, 2),
             "stress_class": zs.get("stress_class", "unknown"),
@@ -349,7 +372,11 @@ def main():
             "advisory_text": zs["advisory"]["text"],
             "advisory_evidence": zs["advisory"]["evidence"],
             "low_confidence": low_conf,
-            "source": "pipeline/yield_risk.py",
+            "hectares":           area_map.get(lbl, round(zs["total_pixels"] / 100.0, 1)),
+            "crop_hectares":      round(zs["crop_pixels"] / 100.0, 1),
+            "masked_noncrop_ha":  zs["masked_ha"],
+            "masked_noncrop_pct": zs["masked_pct"],
+            "source":             "pipeline/yield_risk.py (data-driven SLIC clustering)",
         }
         features.append({
             "type": "Feature",
@@ -378,6 +405,8 @@ def main():
         "zone_count":            total,
         "farm_composition":      comp,
         "farm_shortfall_pct":    farm_shortfall,
+        "non_crop_masked_ha":    masked_ha,
+        "non_crop_masked_pct":   round(non_crop_pixels / total_scene_pixels * 100, 2),
         "tertile_cuts":          {"low_max": round(t1, 2), "medium_max": round(t2, 2)},
         "benchmark_per_date":    dict(zip(dates, [round(b, 4) if not np.isnan(b) else None
                                                    for b in bench_per_date])),

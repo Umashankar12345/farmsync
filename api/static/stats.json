@@ -5,24 +5,26 @@
     "medium": 33.3,
     "high": 33.3
   },
-  "farm_shortfall_pct": 9.95,
+  "farm_shortfall_pct": 13.24,
+  "non_crop_masked_ha": 546.1,
+  "non_crop_masked_pct": 5.08,
   "tertile_cuts": {
-    "low_max": 6.15,
-    "medium_max": 14.72
+    "low_max": 9.87,
+    "medium_max": 16.92
   },
   "benchmark_per_date": {
-    "2025-01-26": 0.6763,
-    "2025-01-31": 0.3814,
-    "2025-02-05": 0.713,
-    "2025-03-02": 0.7108,
-    "2025-03-07": 0.668,
-    "2025-03-12": 0.6895,
-    "2025-03-17": 0.6593,
-    "2025-03-22": 0.6361,
-    "2025-03-27": 0.5891
+    "2025-01-26": 0.6888,
+    "2025-01-31": 0.3871,
+    "2025-02-05": 0.7277,
+    "2025-03-02": 0.7674,
+    "2025-03-07": 0.7197,
+    "2025-03-12": 0.725,
+    "2025-03-17": 0.7155,
+    "2025-03-22": 0.6924,
+    "2025-03-27": 0.6435
   },
-  "bench_peak": 0.713,
-  "bench_now": 0.5891,
+  "bench_peak": 0.7674,
+  "bench_now": 0.6435,
   "source": "pipeline/yield_risk.py",
   "note_composition": "Farm composition derived from the same tier field as zone colours and list dots."
 }
